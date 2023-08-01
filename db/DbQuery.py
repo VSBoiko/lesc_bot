@@ -58,7 +58,7 @@ class DbQuery(Db):
                    p.link as place_link,
                    (SELECT COUNT(1) FROM booking b where b.meeting_id = m.id AND user_id IS NULL) as cnt_tickets
             FROM meetings m
-            JOIN places p ON p.id = m.id
+            JOIN places p ON p.id = m.place_id
             WHERE m.id = {0};
         """.format(meeting_id))
 
