@@ -1,18 +1,22 @@
 import asyncio
-from datetime import date, datetime
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode
 from aiogram.utils import executor
 
+import clb_text
+import services
 from db.Db import Db
 from db.DbQuery import DbQuery
-from settings import TOKEN, DB_NAME
+from settings import TOKEN, DB_PATH
+from services import get_date_from_str
+
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
-db = Db(DB_NAME)
-queries = DbQuery(DB_NAME)
+db = Db(DB_PATH)
+queries = DbQuery(DB_PATH)
+msg_text = services.MessagesText
 
 
 @dp.message_handler(commands=['start'])
@@ -29,27 +33,29 @@ async def start_menu(message: types.Message):
         )
 
     await message.answer(
-        text=f"LESC - Local English speaking club BOT\nВсем хай!",
+        text=msg_text.hello.value,
         reply_markup=get_start_menu(),
         parse_mode=ParseMode.MARKDOWN
     )
 
 
 @dp.callback_query_handler(text=['dates'])
-async def clb_dates(callback_query: types.CallbackQuery):
+async def callback_dates(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await asyncio.sleep(0.2)
     await callback_query.message.delete()
     await asyncio.sleep(0.2)
 
-    dates = {
-        date(year=2023, month=8, day=3): "3 августа",
-        date(year=2023, month=8, day=4): "4 августа",
-        date(year=2023, month=8, day=5): "5 августа",
-    }
+    meetings = queries.get_meetings()
     buttons = []
-    for k, d in dates.items():
-        btn = InlineKeyboardButton(d, callback_data=k.strftime("%d_%m_%Y"))
+    for meeting in meetings:
+        meeting_date = get_date_from_str(meeting.get("date_time"))
+        meeting_name = f"{services.get_str_from_datetime(meeting_date)} - {meeting.get('place_name')}"
+        meeting_clb_data = clb_text.get_clb_data(clb_text.ClbPrefix.meeting.value, meeting.get("id"))
+        btn = InlineKeyboardButton(
+            text=meeting_name,
+            callback_data=meeting_clb_data,
+        )
         buttons.append(btn)
 
     show_buttons = InlineKeyboardMarkup()
@@ -59,47 +65,81 @@ async def clb_dates(callback_query: types.CallbackQuery):
 
     await bot.send_message(
         callback_query.from_user.id,
-        text=f"На какие даты будет клуб",
+        text=msg_text.which_dates.value,
         reply_markup=show_buttons,
         parse_mode=ParseMode.MARKDOWN
     )
 
 
-@dp.callback_query_handler(text=['03_08_2023', '04_08_2023', '05_08_2023'])
-async def clb_scheduler(callback_query: types.CallbackQuery):
+@dp.callback_query_handler(text=clb_text.get_clb_meetings())
+async def callback_meetings(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await asyncio.sleep(0.2)
     await callback_query.message.delete()
     await asyncio.sleep(0.2)
 
-    d = datetime.strptime(callback_query.data, "%d_%m_%Y")
-    btn = InlineKeyboardButton("Записаться", callback_data=f"add_{d.strftime('%d_%m_%Y')}")
-
-    buttons = [btn]
+    meeting = queries.get_meeting_by_id(meeting_id=clb_text.get_postfix(callback_query.data))
+    booking_clb_data = clb_text.get_clb_data(clb_text.ClbPrefix.booking.value, meeting.get("id"))
+    btn = InlineKeyboardButton(services.ButtonsText.booking.value, callback_data=booking_clb_data)
 
     show_buttons = InlineKeyboardMarkup()
-    for button in buttons:
-        show_buttons.add(button)
-        show_buttons.row()
+    if int(meeting.get("cnt_tickets")) > 0:
+        buttons = [btn]
+        for button in buttons:
+            show_buttons.add(button)
+            show_buttons.row()
+
+        tickets_info = msg_text.tickets.value.format(meeting.get("cnt_tickets"))
+    else:
+        tickets_info = msg_text.no_tickets.value
+
+    meeting_date = services.get_date_from_str(meeting.get("date_time"))
+    place_text = f"[{meeting.get('place_name')}]({meeting.get('place_link')})"
+    text = "\n".join((
+        msg_text.date_and_time.value.format(services.get_str_from_datetime(meeting_date)),
+        msg_text.place_info.value.format(place_text),
+        "\n" + tickets_info
+    ))
 
     await bot.send_message(
         callback_query.from_user.id,
-        text=f"ну что давай запишемся на {d.strftime('%d.%m')}",
+        text=text,
         reply_markup=show_buttons,
         parse_mode=ParseMode.MARKDOWN
     )
 
 
-@dp.callback_query_handler(text=['add_03_08_2023', 'add_04_08_2023', 'add_05_08_2023'])
+@dp.callback_query_handler(text=clb_text.get_clb_booking())
 async def clb_booking(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await asyncio.sleep(0.2)
     await callback_query.message.delete()
     await asyncio.sleep(0.2)
 
+    # todo добавить оплату
+    meeting_id = clb_text.get_postfix(callback_query.data)
+    free_booking = queries.get_free_booking_one(meeting_id=meeting_id)
+    user = queries.get_user_by_tg_id(tg_id=callback_query.from_user.id)
+    booking_result = False
+
+    # todo добавить проверку что человек еще не бронировал этот урок
+    # todo добавить условие что тьюторы могут бронировать места без денег
+    # todo система оповещений пользователей что скоро занятие
+    text = msg_text.smt_went_wrong_booking.value
+    if free_booking and user:
+        try:
+            queries.upd_booking(
+                booking_id=free_booking.get("id"),
+                user_id=user.get("id")
+            )
+        except:
+            pass
+        else:
+            text = msg_text.ok_booking.value
+
     await bot.send_message(
         callback_query.from_user.id,
-        text=f"записали приходи не забывай",
+        text=text,
         parse_mode=ParseMode.MARKDOWN
     )
 
