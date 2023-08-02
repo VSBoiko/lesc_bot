@@ -4,17 +4,17 @@ from db.Db import Db
 
 
 class DbQuery(Db):
-    def add_user(self, tg_id, login, name, surname):
+    def add_user(self, data: list):
         query = """
             INSERT INTO users (tg_id, login, name_, surname)
             VALUES (?, ?, ?, ?)
         """
         self.insert(
             query,
-            [(tg_id, login, name, surname)]
+            [data]
         )
 
-    def get_users(self):
+    def get_users(self) -> list[dict]:
         return self.query("""
             SELECT u.id as id,
                    u.tg_id as tg_id,
@@ -24,7 +24,7 @@ class DbQuery(Db):
             FROM users u;
         """)
 
-    def get_user_by_tg_id(self, tg_id):
+    def get_user_by_tg_id(self, tg_id: int) -> dict:
         return self.query_fetchone("""
             SELECT u.id as id,
                    u.tg_id as tg_id,
@@ -35,7 +35,7 @@ class DbQuery(Db):
             WHERE u.tg_id = {0};
         """.format(tg_id))
 
-    def get_meetings(self):
+    def get_meetings(self) -> list[dict]:
         return self.query("""
             SELECT m.id as id,
                    m.date_time as date_time,
@@ -48,7 +48,7 @@ class DbQuery(Db):
             JOIN places p ON p.id = m.place_id;
         """)
 
-    def get_meeting_by_id(self, meeting_id: str):
+    def get_meeting_by_id(self, meeting_id: int) -> dict:
         return self.query_fetchone("""
             SELECT m.id as id,
                    m.date_time as date_time,
@@ -62,14 +62,21 @@ class DbQuery(Db):
             WHERE m.id = {0};
         """.format(meeting_id))
 
-    def get_free_booking_one(self, meeting_id):
+    def get_free_booking_one(self, meeting_id: int) -> dict:
         return self.query_fetchone("""
             SELECT b.id as id
             FROM booking b
             WHERE b.meeting_id = {0} and b.user_id is NULL;
         """.format(meeting_id))
 
-    def upd_booking(self, booking_id: str, user_id: str):
+    def get_booking_by_user(self, meeting_id: int, user_id: int) -> dict:
+        return self.query_fetchone("""
+            SELECT b.id as id
+            FROM booking b
+            WHERE b.meeting_id = {0} and b.user_id = {1};
+        """.format(meeting_id, user_id))
+
+    def upd_booking(self, booking_id: int, user_id: int):
         query = """
             UPDATE booking SET 
                 user_id = ?,
