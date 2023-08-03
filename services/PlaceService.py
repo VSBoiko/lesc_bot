@@ -31,11 +31,10 @@ class PlaceService:
         if not result:
             return None
 
-        place = PlaceService.create(
+        return Place(
+            id=result.get("id"),
             name=result.get("name"),
             address=result.get("address"),
             link=result.get("link"),
             description=result.get("description"),
         )
-        place.id = result.get("id")
-        return place
