@@ -5,19 +5,18 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode
 from aiogram.utils import executor
 
 import clb_text
-import services
+import utils
 from db.Db import Db
 from db.DbQuery import DbQuery
 from settings import TOKEN, DB_PATH
-from services import get_date_from_str
 from services.UserService import UserService
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 db = Db(DB_PATH)
 queries = DbQuery(DB_PATH)
-msg_text = services.MessagesText
-user_service = UserService()
+msg_text = utils.MessagesText
+user_service = UserService(queries)
 
 
 @dp.message_handler(commands=['start'])
@@ -25,14 +24,14 @@ async def start_menu(message: types.Message):
     await sleep_()
 
     from_user = message.from_user
-    if not user_service.is_user_exists(tg_id=from_user.id):
-        new_user = user_service.create_user(
+    if not user_service.is_exists_in_db(tg_id=from_user.id):
+        new_user = user_service.create(
             tg_id=from_user.id,
             login=from_user.mention,
             name=from_user.first_name,
             surname=from_user.last_name,
         )
-        user_service.add_user_to_db(user=new_user)
+        user_service.add_to_db(user=new_user)
 
     await message.answer(
         text=msg_text.hello.value,
@@ -48,8 +47,8 @@ async def callback_dates(callback_query: types.CallbackQuery):
     meetings = queries.get_meetings()
     buttons = []
     for meeting in meetings:
-        meeting_date = get_date_from_str(meeting.get("date_time"))
-        meeting_name = f"{services.get_str_from_datetime(meeting_date)} - {meeting.get('place_name')}"
+        meeting_date = utils.get_date_from_str(meeting.get("date_time"))
+        meeting_name = f"{utils.get_str_from_datetime(meeting_date)} - {meeting.get('place_name')}"
         meeting_clb_data = clb_text.get_clb_data(clb_text.ClbPrefix.meeting.value, meeting.get("id"))
         btn = InlineKeyboardButton(
             text=meeting_name,
@@ -76,13 +75,13 @@ async def callback_meetings(callback_query: types.CallbackQuery):
 
     meeting = queries.get_meeting_by_id(meeting_id=clb_text.get_postfix(callback_query.data))
     booking_clb_data = clb_text.get_clb_data(clb_text.ClbPrefix.booking.value, meeting.get("id"))
-    btn = InlineKeyboardButton(services.ButtonsText.booking.value, callback_data=booking_clb_data)
-    user = user_service.get_user_by_tg_id(tg_id=callback_query.from_user.id)
+    btn = InlineKeyboardButton(utils.ButtonsText.booking.value, callback_data=booking_clb_data)
+    user = user_service.get_by_tg_id(tg_id=callback_query.from_user.id)
 
     show_buttons = InlineKeyboardMarkup()
     already_booked = queries.get_booking_by_user(meeting_id=meeting.get("id"), user_id=user.id)
     if already_booked:
-        tickets_info = services.MessagesText.already_booked.value
+        tickets_info = utils.MessagesText.already_booked.value
     elif meeting.get("cnt_tickets") > 0:
         buttons = [btn]
         for button in buttons:
@@ -93,10 +92,10 @@ async def callback_meetings(callback_query: types.CallbackQuery):
     else:
         tickets_info = msg_text.no_tickets.value
 
-    meeting_date = services.get_date_from_str(meeting.get("date_time"))
+    meeting_date = utils.get_date_from_str(meeting.get("date_time"))
     place_text = f"[{meeting.get('place_name')}]({meeting.get('place_link')})"
     text = "\n".join((
-        msg_text.date_and_time.value.format(services.get_str_from_datetime(meeting_date)),
+        msg_text.date_and_time.value.format(utils.get_str_from_datetime(meeting_date)),
         msg_text.place_info.value.format(place_text),
         "\n" + tickets_info
     ))
@@ -115,7 +114,7 @@ async def clb_booking(callback_query: types.CallbackQuery):
     await asyncio.gather(before_(callback_query.id), sleep_())
 
     # todo добавить оплату
-    user = user_service.get_user_by_tg_id(tg_id=callback_query.from_user.id)
+    user = user_service.get_by_tg_id(tg_id=callback_query.from_user.id)
     if not user:
         await bot.send_message(
             callback_query.from_user.id,
