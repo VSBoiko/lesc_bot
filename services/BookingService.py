@@ -4,6 +4,7 @@ from db.DbQuery import DbQuery
 from services.Booking import Booking
 from services.User import User
 from services.UserService import UserService
+from services.Utils import Utils
 
 
 class BookingService:
@@ -29,10 +30,9 @@ class BookingService:
         if not user:
             raise f"Can`t find user with ID {result.get('user_id')}"
 
-        booking = BookingService.create(
+        return Booking(
+            id=result.get("id"),
             user=user,
-            booking_date_time=result.get("booking_date_time"),
+            booking_date_time=Utils.get_date_from_str(result.get("booking_date_time")),
             paid=bool(result.get("paid")),
         )
-        booking.id = result.get("id")
-        return booking
