@@ -1,14 +1,15 @@
 from db.DbQuery import DbQuery
 from services.User import User
-from settings import DB_PATH
+
+new_user_id = int
 
 
 class UserService:
-    def __init__(self):
-        self.queries = DbQuery(db_name=DB_PATH)
+    def __init__(self, queries: DbQuery):
+        self.queries = queries
 
     @staticmethod
-    def create_user(tg_id: int, login: str, name: str, surname: str) -> User:
+    def create(tg_id: int, login: str, name: str, surname: str) -> User:
         return User(
             id=None,
             tg_id=tg_id,
@@ -17,8 +18,8 @@ class UserService:
             surname=surname,
         )
 
-    def add_user_to_db(self, user: User) -> bool:
-        self.queries.add_user(
+    def add_to_db(self, user: User) -> new_user_id | None:
+        return self.queries.add_user(
             data=[
                 user.tg_id,
                 user.login,
@@ -26,19 +27,34 @@ class UserService:
                 user.surname,
             ]
         )
-        return self.is_user_exists(user.tg_id)
 
-    def get_user_by_tg_id(self, tg_id: int) -> User | None:
+    def get_by_tg_id(self, tg_id: int) -> User | None:
         result = self.queries.get_user_by_tg_id(tg_id)
         if not result:
             return None
 
-        return UserService.create_user(
+        user = UserService.create(
             tg_id=result.get("tg_id"),
             login=result.get("login"),
             name=result.get("name"),
             surname=result.get("surname"),
         )
+        user.id = result.get("id")
+        return user
 
-    def is_user_exists(self, tg_id: int) -> bool:
+    def get_by_id(self, user_id: int) -> User | None:
+        result = self.queries.get_user_by_id(user_id)
+        if not result:
+            return None
+
+        user = UserService.create(
+            tg_id=result.get("tg_id"),
+            login=result.get("login"),
+            name=result.get("name"),
+            surname=result.get("surname"),
+        )
+        user.id = result.get("id")
+        return user
+
+    def is_exists_in_db(self, tg_id: int) -> bool:
         return bool(self.queries.get_user_by_tg_id(tg_id))
