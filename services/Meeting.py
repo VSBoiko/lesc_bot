@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
-from Place import Place
-from Booking import Booking
+from services.Place import Place
+from services.Booking import Booking
 
 
 @dataclass(slots=True)

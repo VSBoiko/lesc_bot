@@ -26,13 +26,22 @@ class BookingService:
             return None
 
         user_service = UserService(self.queries)
-        user = user_service.get_by_id(user_id=result.get("user_id"))
-        if not user:
-            raise f"Can`t find user with ID {result.get('user_id')}"
+        if result.get("user_id"):
+            user = user_service.get_by_id(user_id=result.get("user_id"))
+        else:
+            user = None
+
+        if result.get("booking_date_time"):
+            booking_date_time = Utils.get_date_from_str(
+                result.get("booking_date_time"),
+                date_str_format="%Y-%m-%d %H:%M:%S"
+            )
+        else:
+            booking_date_time = None
 
         return Booking(
             id=result.get("id"),
             user=user,
-            booking_date_time=Utils.get_date_from_str(result.get("booking_date_time")),
+            booking_date_time=booking_date_time,
             paid=bool(result.get("paid")),
         )
