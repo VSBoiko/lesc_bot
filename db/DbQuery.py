@@ -113,10 +113,7 @@ class DbQuery(Db):
             SELECT m.id as id,
                    m.date_time as date_time,
                    m.name_ as name,
-                   p.name_ as place_name,
-                   p.address as place_address,
-                   p.link as place_link,
-                   (SELECT COUNT(1) FROM booking b where b.meeting_id = m.id AND user_id IS NULL) as cnt_tickets
+                   p.id as place_id
             FROM meetings m
             JOIN places p ON p.id = m.place_id
             WHERE m.id = {0};
@@ -135,6 +132,17 @@ class DbQuery(Db):
             FROM booking b
             WHERE b.meeting_id = {0} and b.user_id = {1};
         """.format(meeting_id, user_id))
+
+    def get_bookings_by_meeting_id(self, meeting_id: int) -> list[dict]:
+        return self.query("""
+            SELECT b.id as id,
+                   b.meeting_id as meeting_id,
+                   b.user_id as user_id,
+                   b.booking_date_time as booking_date_time,
+                   b.paid as paid
+            FROM booking b
+            WHERE b.meeting_id = {0}
+        """.format(meeting_id))
 
     def upd_booking(self, booking_id: int, user_id: int):
         query = """
