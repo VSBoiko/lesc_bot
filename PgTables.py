@@ -8,6 +8,7 @@ class PgTables:
         self._create_meetings()
         self._create_tickets()
         self._create_bookings()
+        self.db.commit()
 
     def _create_tg_users(self):
         # таблица "Пользователи"
@@ -65,7 +66,6 @@ class PgTables:
                 constraint fk_meeting
                     foreign key (meeting_id)
                         references meetings (id)
-            
             );
         """)
 
