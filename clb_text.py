@@ -1,11 +1,11 @@
 from enum import Enum
 
-from db.Db import Db
-from db.DbQuery import DbQuery
-from settings import DB_PATH
+from db.PgDatabase import PgDatabase
+from db.PgQuery import PgQuery
+from settings import DB_NAME, DB_USER, DB_USER_PASS
 
-db = Db(DB_PATH)
-queries = DbQuery(DB_PATH)
+db = PgDatabase(DB_NAME, DB_USER, DB_USER_PASS)
+queries = PgQuery(db)
 
 
 class ClbPrefix(Enum):

@@ -1,7 +1,9 @@
+from db.base.Db import Db
+
 import sqlite3
 
 
-class Db:
+class SqliteDb(Db):
     """Класс для работы с БД SQLite3."""
 
     def __init__(self, db_name: str):
@@ -9,10 +11,8 @@ class Db:
 
         :param db_name: название файла с БД (например, "basedb.db").
         """
-        # Название файла БД
+        super().__init__()
         self.__db_name = db_name
-
-        # Подключение к БД
         self.__connection = sqlite3.connect(self.__db_name, check_same_thread=False)
 
     def execute(self, query: str):

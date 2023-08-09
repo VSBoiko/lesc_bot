@@ -1,9 +1,11 @@
-import datetime
-
-from db.Db import Db
+from db.base.DbQuery import DbQuery
 
 
-class DbQuery(Db):
+# todo доработать
+class SqliteQuery(DbQuery):
+    def __init__(self, db):
+        super().__init__(db)
+
     def add_booking(self, data: list):
         query = """
             INSERT INTO booking (meeting_id, user_id, booking_date_time, paid)
@@ -119,7 +121,7 @@ class DbQuery(Db):
             WHERE m.id = {0};
         """.format(meeting_id))
 
-    def get_free_booking_one(self, meeting_id: int) -> dict:
+    def get_free_tickets_by_meet_id(self, meeting_id: int) -> dict:
         return self.query_fetchone("""
             SELECT b.id as id
             FROM booking b

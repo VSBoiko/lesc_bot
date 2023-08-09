@@ -1,17 +1,20 @@
 import psycopg2
 
+from db.base.Db import Db
 
-class PgDatabase:
+
+class PgDatabase(Db):
     """Класс для работы с БД Postgresql."""
 
     def __init__(self, db_name: str, db_user: str, db_user_pass: str):
         """Инициализировать объект класса Db."""
+        super().__init__()
         self._db_name = db_name
         self._db_user = db_user
         self._password = db_user_pass
 
         self._connection = psycopg2.connect(
-            host="localhost",
+            host="127.0.0.1",
             port='5432',
             database=self._db_name,
             user=self._db_user,
@@ -28,6 +31,7 @@ class PgDatabase:
         :param query: текст запроса.
         """
         self._cursor.execute(query)
+        return self._cursor.fetchall(), [column.name for column in self._cursor.description]
 
     def query(self, query: str) -> list[dict]:
         """Запрос к БД с получением результата этого запроса (через fetchall).
@@ -36,11 +40,11 @@ class PgDatabase:
 
         :return: результат запроса.
         """
-        rows = self._cursor.execute(query)
+        rows, columns = self.execute(query)
         result = []
         for row in rows:
             result.append(
-                {rows.description[i][0]: val for i, val in enumerate(row)}
+                {columns[i]: val for i, val in enumerate(row)}
             )
         del rows
         return result
@@ -68,8 +72,9 @@ class PgDatabase:
         :param query: текст запроса;
         :param data: данные, которые требуется записать.
         """
-        with self._cursor as cur:
-            cur.executemany(query, data)
+        self._cursor.execute(query, *data)
+        self._connection.commit()
+        return self._cursor.fetchone()
 
     def update(self, query: str, data: list):
         """Обновить в БД.
@@ -77,4 +82,7 @@ class PgDatabase:
         :param query: текст запроса;
         :param data: обновленные данные.
         """
+        # todo дописать
         self.insert(query, data)
+        self._connection.commit()
+        return self._cursor.fetchone()

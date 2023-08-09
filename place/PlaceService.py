@@ -1,5 +1,5 @@
-from db.DbQuery import DbQuery
-from services.Place import Place
+from db.base.DbQuery import DbQuery
+from place.Place import Place
 
 
 class PlaceService:

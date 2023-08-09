@@ -1,5 +1,5 @@
-from db.DbQuery import DbQuery
-from services.User import User
+from db.base.DbQuery import DbQuery
+from user.User import User
 
 new_user_id = int
 
@@ -18,7 +18,7 @@ class UserService:
             surname=surname,
         )
 
-    def add_to_db(self, user: User) -> new_user_id | None:
+    def add_to_db(self, user: User) -> new_user_id:
         return self.queries.add_user(
             data=[
                 user.tg_id,

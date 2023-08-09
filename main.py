@@ -6,17 +6,16 @@ from aiogram.utils import executor
 
 import clb_text
 import utils
-from db.Db import Db
-from db.DbQuery import DbQuery
-from services.MeetingService import MeetingService
-from services.Utils import Utils
-from settings import TOKEN, DB_PATH
-from services.UserService import UserService
+from db.PgDatabase import PgDatabase
+from db.PgQuery import PgQuery
+from meeting.MeetingService import MeetingService
+from settings import TOKEN, DB_NAME, DB_USER, DB_USER_PASS
+from user.UserService import UserService
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
-db = Db(DB_PATH)
-queries = DbQuery(DB_PATH)
+db = PgDatabase(DB_NAME, DB_USER, DB_USER_PASS)
+queries = PgQuery(db)
 msg_text = utils.MessagesText
 user_service = UserService(queries)
 meeting_service = MeetingService(queries)
@@ -50,7 +49,7 @@ async def callback_dates(callback_query: types.CallbackQuery):
     meetings = meeting_service.get_actual_meetings()
     buttons = []
     for meeting in meetings:
-        meeting_date = Utils.get_str_from_datetime(meeting.date_time)
+        meeting_date = utils.get_str_from_datetime(meeting.date_time)
         meeting_name = f"{meeting_date} - {meeting.place.name}"
         meeting_clb_data = clb_text.get_clb_data(clb_text.ClbPrefix.meeting.value, meeting.id)
         btn = InlineKeyboardButton(
@@ -82,17 +81,16 @@ async def callback_meetings(callback_query: types.CallbackQuery):
     user = user_service.get_by_tg_id(tg_id=callback_query.from_user.id)
 
     show_buttons = InlineKeyboardMarkup()
-    already_booked = queries.get_booking_by_user(meeting_id=meeting.id, user_id=user.id)
-    free_bookings = meeting_service.get_free_booking(meeting)
-    if already_booked:
+    free_tickets = meeting_service.get_free_tickets(meeting=meeting)
+    if meeting_service.is_user_have_meeting_booking(meeting=meeting, user=user):
         tickets_info = utils.MessagesText.already_booked.value
-    elif len(free_bookings) > 0:
+    elif len(free_tickets) > 0:
         buttons = [btn]
         for button in buttons:
             show_buttons.add(button)
             show_buttons.row()
 
-        tickets_info = msg_text.tickets.value.format(len(free_bookings))
+        tickets_info = msg_text.tickets.value.format(len(free_tickets))
     else:
         tickets_info = msg_text.no_tickets.value
 
@@ -130,9 +128,8 @@ async def clb_booking(callback_query: types.CallbackQuery):
 
     # todo добавить условие что тьюторы могут бронировать места без денег
     # todo система оповещений пользователей что скоро занятие
-    meeting_id = clb_text.get_postfix(callback_query.data)
-    already_booked = queries.get_booking_by_user(meeting_id=meeting_id, user_id=user.id)
-    if already_booked:
+    meeting = meeting_service.get_by_id(meeting_id=clb_text.get_postfix(callback_query.data))
+    if meeting_service.is_user_have_meeting_booking(meeting, user):
         await bot.send_message(
             callback_query.from_user.id,
             text=msg_text.already_booked.value,
@@ -141,20 +138,21 @@ async def clb_booking(callback_query: types.CallbackQuery):
         )
         return
 
-    free_booking = queries.get_free_booking_one(meeting_id=meeting_id)
-    if not free_booking:
+    free_tickets = meeting_service.get_free_tickets(meeting=meeting)
+    if not free_tickets:
         await bot.send_message(
             callback_query.from_user.id,
-            text=msg_text.no_free_booked.value,
+            text=msg_text.no_free_tickets.value,
             parse_mode=ParseMode.MARKDOWN,
             reply_to_message_id=callback_query.message.message_id,
         )
         return
 
     try:
-        queries.upd_booking(
-            booking_id=free_booking.get("id"),
-            user_id=user.id
+        meeting_service.add_meeting_booking(
+            ticket=free_tickets[0],
+            user=user,
+            is_paid=False,
         )
     except Exception as e:
         text = msg_text.smt_went_wrong_booking.value

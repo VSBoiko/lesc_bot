@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime
-from services.Place import Place
-from services.Booking import Booking
+from place.Place import Place
+from booking.Booking import Booking
+from ticket.Ticket import Ticket
 
 
 @dataclass(slots=True)
@@ -10,4 +11,5 @@ class Meeting:
     date_time: datetime
     name: str
     place: Place
-    booking: list[Booking]
+    tickets: list[Ticket]
+    bookings: list[Booking]

@@ -3,7 +3,7 @@ from datetime import datetime
 from settings import db_datetime_format, str_datetime_format
 
 
-class Utils:
+class Services:
     @staticmethod
     def get_date_from_str(date_str: str, date_str_format: str = db_datetime_format) -> datetime:
         return datetime.strptime(date_str, date_str_format)
