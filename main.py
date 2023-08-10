@@ -5,10 +5,12 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode
 from aiogram.utils import executor
 
 import clb_text
-import utils
 from db.PgDatabase import PgDatabase
 from db.PgQuery import PgQuery
 from meeting.MeetingService import MeetingService
+from msg_texts.MessagesText import MessagesText
+from msg_texts.ButtonsText import ButtonsText
+from services.Services import Services
 from settings import TOKEN, DB_NAME, DB_USER, DB_USER_PASS
 from user.UserService import UserService
 
@@ -16,7 +18,9 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 db = PgDatabase(DB_NAME, DB_USER, DB_USER_PASS)
 queries = PgQuery(db)
-msg_text = utils.MessagesText
+msg_text = MessagesText()
+btn_text = ButtonsText()
+services = Services()
 user_service = UserService(queries)
 meeting_service = MeetingService(queries)
 
@@ -36,7 +40,7 @@ async def start_menu(message: types.Message):
         user_service.add_to_db(user=new_user)
 
     await message.answer(
-        text=msg_text.hello.value,
+        text=msg_text.get_hello(),
         reply_markup=get_start_menu(),
         parse_mode=ParseMode.MARKDOWN
     )
@@ -49,7 +53,7 @@ async def callback_dates(callback_query: types.CallbackQuery):
     meetings = meeting_service.get_actual_meetings()
     buttons = []
     for meeting in meetings:
-        meeting_date = utils.get_str_from_datetime(meeting.date_time)
+        meeting_date = services.get_str_from_datetime(meeting.date_time)
         meeting_name = f"{meeting_date} - {meeting.place.name}"
         meeting_clb_data = clb_text.get_clb_data(clb_text.ClbPrefix.meeting.value, meeting.id)
         btn = InlineKeyboardButton(
@@ -65,7 +69,7 @@ async def callback_dates(callback_query: types.CallbackQuery):
 
     await bot.send_message(
         callback_query.from_user.id,
-        text=msg_text.which_dates.value,
+        text=msg_text.get_club_dates(),
         reply_markup=show_buttons,
         parse_mode=ParseMode.MARKDOWN
     )
@@ -77,28 +81,28 @@ async def callback_meetings(callback_query: types.CallbackQuery):
 
     meeting = meeting_service.get_by_id(meeting_id=clb_text.get_postfix(callback_query.data))
     booking_clb_data = clb_text.get_clb_data(clb_text.ClbPrefix.booking.value, meeting.id)
-    btn = InlineKeyboardButton(utils.ButtonsText.booking.value, callback_data=booking_clb_data)
+    btn = InlineKeyboardButton(btn_text.get_booking(), callback_data=booking_clb_data)
     user = user_service.get_by_tg_id(tg_id=callback_query.from_user.id)
 
     show_buttons = InlineKeyboardMarkup()
     free_tickets = meeting_service.get_free_tickets(meeting=meeting)
     if meeting_service.is_user_have_meeting_booking(meeting=meeting, user=user):
-        tickets_info = utils.MessagesText.already_booked.value
+        tickets_info = msg_text.get_booking_already()
     elif len(free_tickets) > 0:
         buttons = [btn]
         for button in buttons:
             show_buttons.add(button)
             show_buttons.row()
 
-        tickets_info = msg_text.tickets.value.format(len(free_tickets))
+        tickets_info = msg_text.get_cnt_free_tickets(len(free_tickets))
     else:
-        tickets_info = msg_text.no_tickets.value
+        tickets_info = msg_text.get_no_tickets()
 
-    meeting_date = utils.get_str_from_datetime(meeting.date_time)
+    meeting_date = services.get_str_from_datetime(meeting.date_time)
     place_text = f"[{meeting.place.name}]({meeting.place.link})"
     text = "\n".join((
-        msg_text.date_and_time.value.format(meeting_date),
-        msg_text.place_info.value.format(place_text),
+        msg_text.get_date_and_time(meeting_date),
+        msg_text.get_place(place_text),
         "\n" + tickets_info
     ))
 
@@ -120,7 +124,7 @@ async def clb_booking(callback_query: types.CallbackQuery):
     if not user:
         await bot.send_message(
             callback_query.from_user.id,
-            text=msg_text.smt_went_wrong_booking.value,
+            text=msg_text.get_smt_went_wrong(),
             parse_mode=ParseMode.MARKDOWN,
             reply_to_message_id=callback_query.message.message_id,
         )
@@ -132,7 +136,7 @@ async def clb_booking(callback_query: types.CallbackQuery):
     if meeting_service.is_user_have_meeting_booking(meeting, user):
         await bot.send_message(
             callback_query.from_user.id,
-            text=msg_text.already_booked.value,
+            text=msg_text.get_booking_already(),
             parse_mode=ParseMode.MARKDOWN,
             reply_to_message_id=callback_query.message.message_id,
         )
@@ -142,7 +146,7 @@ async def clb_booking(callback_query: types.CallbackQuery):
     if not free_tickets:
         await bot.send_message(
             callback_query.from_user.id,
-            text=msg_text.no_free_tickets.value,
+            text=msg_text.get_no_tickets(),
             parse_mode=ParseMode.MARKDOWN,
             reply_to_message_id=callback_query.message.message_id,
         )
@@ -155,9 +159,9 @@ async def clb_booking(callback_query: types.CallbackQuery):
             is_paid=False,
         )
     except Exception as e:
-        text = msg_text.smt_went_wrong_booking.value
+        text = msg_text.get_smt_went_wrong()
     else:
-        text = msg_text.ok_booking.value
+        text = msg_text.get_booking_success()
 
     await bot.send_message(
         callback_query.from_user.id,

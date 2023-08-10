@@ -99,7 +99,8 @@ class PgQuery(DbQuery):
                    m.place_id as place_id,
                    m.date_time as date_time,
                    m.name_ as name
-            FROM meetings m;
+            FROM meetings m 
+            ORDER BY date_time;
         """)
 
     def get_meeting_by_id(self, meeting_id: int) -> dict:

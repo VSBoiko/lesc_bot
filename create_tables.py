@@ -1,6 +1,7 @@
-from PgTables import PgTables
+from db.PgTables import PgTables
 from db.PgDatabase import PgDatabase
 from settings import DB_NAME, DB_USER, DB_USER_PASS
+
 
 if __name__ == "__main__":
     db = PgDatabase(
@@ -9,5 +10,5 @@ if __name__ == "__main__":
         DB_USER_PASS
     )
 
-    pg_tables = PgTables(db)
-    pg_tables.create()
+    tables = PgTables(db)
+    tables.create()
