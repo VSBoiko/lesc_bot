@@ -25,6 +25,9 @@ class PgDatabase(Db):
     def commit(self):
         self._connection.commit()
 
+    def rollback(self):
+        self._connection.rollback()
+
     def execute(self, query: str):
         """Запрос к БД.
 
@@ -72,9 +75,13 @@ class PgDatabase(Db):
         :param query: текст запроса;
         :param data: данные, которые требуется записать.
         """
-        self._cursor.execute(query, *data)
-        self._connection.commit()
-        return self._cursor.fetchone()
+        try:
+            self._cursor.execute(query, *data)
+        except Exception as e:
+            self.rollback()
+        else:
+            self.commit()
+            return self._cursor.fetchone()
 
     def update(self, query: str, data: list):
         """Обновить в БД.
@@ -82,7 +89,4 @@ class PgDatabase(Db):
         :param query: текст запроса;
         :param data: обновленные данные.
         """
-        # todo дописать
-        self.insert(query, data)
-        self._connection.commit()
-        return self._cursor.fetchone()
+        return self.insert(query, data)
