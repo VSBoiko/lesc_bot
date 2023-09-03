@@ -1,11 +1,9 @@
 from enum import Enum
 
-from db.PgDatabase import PgDatabase
-from db.PgQuery import PgQuery
-from settings import DB_NAME, DB_USER, DB_USER_PASS
+from settings import HOST
+from api.meetings.ApiMeetings import ApiMeetings
 
-db = PgDatabase(DB_NAME, DB_USER, DB_USER_PASS)
-queries = PgQuery(db)
+api_meetings = ApiMeetings(HOST)
 
 
 class ClbPrefix(Enum):
@@ -23,8 +21,8 @@ def get_postfix(clb_data: str):
 
 
 def get_clb_meetings() -> list:
-    return [get_clb_data(ClbPrefix.meeting.value, meeting.get("id")) for meeting in queries.get_meetings()]
+    return [get_clb_data(ClbPrefix.meeting.value, meeting.get_pk()) for meeting in api_meetings.get_meetings()]
 
 
 def get_clb_booking() -> list:
-    return [get_clb_data(ClbPrefix.booking.value, meeting.get("id")) for meeting in queries.get_meetings()]
+    return [get_clb_data(ClbPrefix.booking.value, meeting.get_pk()) for meeting in api_meetings.get_meetings()]

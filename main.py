@@ -1,28 +1,33 @@
 import asyncio
+from datetime import datetime
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode
 from aiogram.utils import executor
 
+from api.bookings.ApiBookings import ApiBookings
+from api.bookings.Booking import Booking
+from api.meetings.ApiMeetings import ApiMeetings
+from api.meetings.Meeting import Meeting
+from api.members.ApiMembers import ApiMember
+from api.members.Member import Member
 import clb_text
-from db.PgDatabase import PgDatabase
-from db.PgQuery import PgQuery
-from meeting.MeetingService import MeetingService
+from api.places.Place import Place
+from api.tickets.Ticket import Ticket
 from msg_texts.MessagesText import MessagesText
 from msg_texts.ButtonsText import ButtonsText
-from services.Services import Services
-from settings import TOKEN, DB_NAME, DB_USER, DB_USER_PASS
-from user.UserService import UserService
+from settings import TOKEN, HOST
+from api.settings import datetime_format_str, datetime_format_str_api
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
-db = PgDatabase(DB_NAME, DB_USER, DB_USER_PASS)
-queries = PgQuery(db)
+
 msg_text = MessagesText()
 btn_text = ButtonsText()
-services = Services()
-user_service = UserService(queries)
-meeting_service = MeetingService(queries)
+
+api_members = ApiMember(HOST)
+api_meetings = ApiMeetings(HOST)
+api_bookings = ApiBookings(HOST)
 
 
 @dp.message_handler(commands=['start'])
@@ -30,14 +35,14 @@ async def start_menu(message: types.Message):
     await sleep_()
 
     from_user = message.from_user
-    if not user_service.is_exists_in_db(tg_id=from_user.id):
-        new_user = user_service.create(
+    if not api_members.get_member_by_tg_id(tg_id=from_user.id):
+        new_member = Member(
             tg_id=from_user.id,
             login=from_user.mention,
             name=from_user.first_name,
             surname=from_user.last_name,
         )
-        user_service.add_to_db(user=new_user)
+        api_members.add_member(new_member=new_member)
 
     await message.answer(
         text=msg_text.get_hello(),
@@ -50,12 +55,24 @@ async def start_menu(message: types.Message):
 async def callback_dates(callback_query: types.CallbackQuery):
     await asyncio.gather(before_(callback_query.id), sleep_())
 
-    meetings = meeting_service.get_actual_meetings()
+    meetings: list[Meeting] = api_meetings.get_future_meetings()
+    if not meetings:
+        await bot.send_message(
+            callback_query.from_user.id,
+            text="Мы готовим ближайшие встречи и скоро вы сможете записаться на них",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    def get_date_time(m: Meeting) -> datetime:
+        return m.get_date_time()
+
+    meetings.sort(key=get_date_time)
     buttons = []
     for meeting in meetings:
-        meeting_date = services.get_str_from_datetime(meeting.date_time)
-        meeting_name = f"{meeting_date} - {meeting.place.name}"
-        meeting_clb_data = clb_text.get_clb_data(clb_text.ClbPrefix.meeting.value, meeting.id)
+        meeting_date: str = meeting.get_date_time().strftime(datetime_format_str)
+        meeting_name = f"{meeting_date} - {meeting.get_place().get_name()}"
+        meeting_clb_data: str = clb_text.get_clb_data(clb_text.ClbPrefix.meeting.value, meeting.get_pk())
         btn = InlineKeyboardButton(
             text=meeting_name,
             callback_data=meeting_clb_data,
@@ -79,27 +96,51 @@ async def callback_dates(callback_query: types.CallbackQuery):
 async def callback_meetings(callback_query: types.CallbackQuery):
     await asyncio.gather(before_(callback_query.id), sleep_())
 
-    meeting = meeting_service.get_by_id(meeting_id=clb_text.get_postfix(callback_query.data))
-    booking_clb_data = clb_text.get_clb_data(clb_text.ClbPrefix.booking.value, meeting.id)
-    btn = InlineKeyboardButton(btn_text.get_booking(), callback_data=booking_clb_data)
-    user = user_service.get_by_tg_id(tg_id=callback_query.from_user.id)
+    meeting: Meeting = api_meetings.get_meeting_by_pk(pk=clb_text.get_postfix(callback_query.data))
+    if not meeting:
+        await bot.send_message(
+            callback_query.from_user.id,
+            text="Похоже, что то сломалось, "
+                 "я не смог найти встречу, на которую вы хотите записаться( Напишите моим разработчикам",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_to_message_id=callback_query.message.message_id,
+        )
+        return
+
+    member: Member = api_members.get_member_by_tg_id(tg_id=callback_query.from_user.id)
+    if not member:
+        await bot.send_message(
+            callback_query.from_user.id,
+            text="Похоже, что то сломалось, "
+                 "я не смог вас узнать, напишите, пожалуйста, моим разработчикам",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_to_message_id=callback_query.message.message_id,
+        )
+        return
 
     show_buttons = InlineKeyboardMarkup()
-    free_tickets = meeting_service.get_free_tickets(meeting=meeting)
-    if meeting_service.is_user_have_meeting_booking(meeting=meeting, user=user):
-        tickets_info = msg_text.get_booking_already()
-    elif len(free_tickets) > 0:
+    free_tickets: list[Ticket] = meeting.get_free_tickets()
+    if meeting.check_booking_by_td_id(tg_id=member.get_tg_id()):
+        tickets_info: str = msg_text.get_booking_already()
+    elif free_tickets:
+        booking_clb_data: str = clb_text.get_clb_data(clb_text.ClbPrefix.booking.value, meeting.get_pk())
+        btn = InlineKeyboardButton(
+            text=btn_text.get_booking(),
+            callback_data=booking_clb_data
+        )
         buttons = [btn]
+
         for button in buttons:
             show_buttons.add(button)
             show_buttons.row()
 
-        tickets_info = msg_text.get_cnt_free_tickets(len(free_tickets))
+        tickets_info: str = msg_text.get_cnt_free_tickets(len(free_tickets))
     else:
-        tickets_info = msg_text.get_no_tickets()
+        tickets_info: str = msg_text.get_no_tickets()
 
-    meeting_date = services.get_str_from_datetime(meeting.date_time)
-    place_text = f"[{meeting.place.name}]({meeting.place.link})"
+    meeting_date: str = meeting.get_date_time().strftime(datetime_format_str)
+    place: Place = meeting.get_place()
+    place_text = f"[{place.get_name()}]({place.get_link()})"
     text = "\n".join((
         msg_text.get_date_and_time(meeting_date),
         msg_text.get_place(place_text),
@@ -120,11 +161,12 @@ async def clb_booking(callback_query: types.CallbackQuery):
     await asyncio.gather(before_(callback_query.id), sleep_())
 
     # todo добавить оплату
-    user = user_service.get_by_tg_id(tg_id=callback_query.from_user.id)
-    if not user:
+    member: Member = api_members.get_member_by_tg_id(tg_id=callback_query.from_user.id)
+    if not member:
         await bot.send_message(
             callback_query.from_user.id,
-            text=msg_text.get_smt_went_wrong(),
+            text="Похоже, что то сломалось, "
+                 "я не смог вас узнать, напишите, пожалуйста, моим разработчикам",
             parse_mode=ParseMode.MARKDOWN,
             reply_to_message_id=callback_query.message.message_id,
         )
@@ -132,8 +174,8 @@ async def clb_booking(callback_query: types.CallbackQuery):
 
     # todo добавить условие что тьюторы могут бронировать места без денег
     # todo система оповещений пользователей что скоро занятие
-    meeting = meeting_service.get_by_id(meeting_id=clb_text.get_postfix(callback_query.data))
-    if meeting_service.is_user_have_meeting_booking(meeting, user):
+    meeting = api_meetings.get_meeting_by_pk(pk=clb_text.get_postfix(callback_query.data))
+    if meeting.check_booking_by_td_id(tg_id=member.get_tg_id()):
         await bot.send_message(
             callback_query.from_user.id,
             text=msg_text.get_booking_already(),
@@ -142,7 +184,7 @@ async def clb_booking(callback_query: types.CallbackQuery):
         )
         return
 
-    free_tickets = meeting_service.get_free_tickets(meeting=meeting)
+    free_tickets = meeting.get_free_tickets()
     if not free_tickets:
         await bot.send_message(
             callback_query.from_user.id,
@@ -153,10 +195,13 @@ async def clb_booking(callback_query: types.CallbackQuery):
         return
 
     try:
-        meeting_service.add_meeting_booking(
-            ticket=free_tickets[0],
-            user=user,
-            is_paid=False,
+        api_bookings.add_booking(
+            new_booking=Booking(
+                date_time=datetime.now().strftime(datetime_format_str_api),
+                is_paid=False,
+            ),
+            ticket_id=free_tickets[0].get_pk(),
+            member_id=member.get_pk(),
         )
     except Exception as e:
         text = msg_text.get_smt_went_wrong()
