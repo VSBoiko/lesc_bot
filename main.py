@@ -140,7 +140,9 @@ async def callback_meetings(callback_query: types.CallbackQuery, callback_data: 
             )
         btn_builder.button(
             text="Отменить бронирование",
-            callback_data=ClbDelete(postfix=ClbPrefix.booking, pk=member_ticket.get_booking().get_pk())
+            callback_data=ClbDelete(
+                postfix=ClbPrefix.booking, pk=member_ticket.get_booking().get_pk(), extra_pk=meeting.get_pk()
+            )
         )
         tickets_info: str = msg_text.get_booking_already()
     elif free_tickets:
@@ -233,6 +235,12 @@ async def delete_booking(callback_query: types.CallbackQuery, callback_data: Clb
     await before_(callback_query_id=callback_query.id)
 
     result = api_bookings.delete_booking(pk=callback_data.pk)
+    if not result:
+        meeting = api_meetings.get_meeting_by_pk(pk=callback_data.extra_pk)
+        member_ticket = meeting.get_ticket_by_tg_id(tg_id=callback_query.from_user.id)
+        if member_ticket:
+            result = api_bookings.delete_booking(pk=member_ticket.get_booking().get_pk())
+
     if result:
         text = "Бронирование отменено, посмотри встречи на другую дату"
     else:
