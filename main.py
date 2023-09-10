@@ -17,7 +17,7 @@ from api.places.Place import Place
 from api.tickets.Ticket import Ticket
 from msg_texts.MessagesText import MessagesText
 from msg_texts.ButtonsText import ButtonsText
-from settings import TOKEN, HOST
+from settings import TOKEN, HOST, ADMIN_CHANEL_ID
 from api.settings import datetime_format_str, datetime_format_str_api
 
 
@@ -37,14 +37,15 @@ api_bookings = ApiBookings(HOST)
 @router.message(Command("start"))
 async def start_menu(message: types.Message):
     from_user = message.from_user
-    if not api_members.get_member_by_tg_id(tg_id=from_user.id):
+    member = await api_members.get_member_by_tg_id(tg_id=from_user.id)
+    if not member:
         new_member = Member(
             tg_id=from_user.id,
             login=from_user.mention,
             name=from_user.first_name,
             surname=from_user.last_name,
         )
-        api_members.add_member(new_member=new_member)
+        await api_members.add_member(new_member=new_member)
 
     bnt_builder = InlineKeyboardBuilder()
     postfixes: dict = {
@@ -66,7 +67,7 @@ async def start_menu(message: types.Message):
 async def callback_dates(callback_query: types.CallbackQuery):
     await asyncio.gather(before_(callback_query.id))
 
-    meetings: list[Meeting] = api_meetings.get_future_meetings()
+    meetings: list[Meeting] = await api_meetings.get_future_meetings()
     if not meetings:
         await bot.send_message(
             callback_query.from_user.id,
@@ -100,7 +101,7 @@ async def callback_dates(callback_query: types.CallbackQuery):
 async def callback_meetings(callback_query: types.CallbackQuery, callback_data: ClbShowDetail):
     await asyncio.gather(before_(callback_query.id))
 
-    meeting: Meeting = api_meetings.get_meeting_by_pk(pk=callback_data.pk)
+    meeting: Meeting = await api_meetings.get_meeting_by_pk(pk=callback_data.pk)
     if not meeting:
         await bot.send_message(
             callback_query.from_user.id,
@@ -117,7 +118,7 @@ async def callback_meetings(callback_query: types.CallbackQuery, callback_data: 
         )
         return
 
-    member: Member = api_members.get_member_by_tg_id(tg_id=callback_query.from_user.id)
+    member: Member = await api_members.get_member_by_tg_id(tg_id=callback_query.from_user.id)
     if not member:
         await bot.send_message(
             callback_query.from_user.id,
@@ -140,9 +141,7 @@ async def callback_meetings(callback_query: types.CallbackQuery, callback_data: 
             )
         btn_builder.button(
             text="Отменить бронирование",
-            callback_data=ClbDelete(
-                postfix=ClbPrefix.booking, pk=member_ticket.get_booking().get_pk(), extra_pk=meeting.get_pk()
-            )
+            callback_data=ClbDelete(postfix=ClbPrefix.booking, pk=meeting.get_pk())
         )
         tickets_info: str = msg_text.get_booking_already()
     elif free_tickets:
@@ -179,7 +178,7 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
 
     # todo добавить оплату
 
-    member: Member = api_members.get_member_by_tg_id(tg_id=callback_query.from_user.id)
+    member: Member = await api_members.get_member_by_tg_id(tg_id=callback_query.from_user.id)
     if not member:
         await bot.send_message(
             callback_query.from_user.id,
@@ -191,7 +190,7 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
 
     # todo добавить условие что тьюторы могут бронировать места без денег
     # todo система оповещений пользователей что скоро занятие
-    meeting = api_meetings.get_meeting_by_pk(pk=callback_data.pk)
+    meeting = await api_meetings.get_meeting_by_pk(pk=callback_data.pk)
     if meeting.check_booking_by_td_id(tg_id=member.get_tg_id()):
         await bot.send_message(
             callback_query.from_user.id,
@@ -210,7 +209,7 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
         return
 
     try:
-        api_bookings.add_booking(
+        await api_bookings.add_booking(
             new_booking=Booking(
                 date_time=datetime.now().strftime(datetime_format_str_api),
                 is_paid=False,
@@ -234,17 +233,21 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
 async def delete_booking(callback_query: types.CallbackQuery, callback_data: ClbDelete):
     await before_(callback_query_id=callback_query.id)
 
-    result = api_bookings.delete_booking(pk=callback_data.pk)
-    if not result:
-        meeting = api_meetings.get_meeting_by_pk(pk=callback_data.extra_pk)
-        member_ticket = meeting.get_ticket_by_tg_id(tg_id=callback_query.from_user.id)
-        if member_ticket:
-            result = api_bookings.delete_booking(pk=member_ticket.get_booking().get_pk())
-
-    if result:
-        text = "Бронирование отменено, посмотри встречи на другую дату"
-    else:
+    meeting = await api_meetings.get_meeting_by_pk(pk=callback_data.pk)
+    member_ticket = meeting.get_ticket_by_tg_id(tg_id=callback_query.from_user.id)
+    if not member_ticket:
         text = "Похоже, что то вы уже отменили бронирование на эту встречу"
+    else:
+        result = await api_bookings.delete_booking(pk=member_ticket.get_booking().get_pk())
+        if result:
+            text = "Бронирование отменено, посмотри встречи на другую дату"
+            notif_text = f"какой то хмырь с логином {member_ticket.get_booking_member().get_name()} отменил бронирование на встречу {meeting.get_name()}"
+            await bot.send_message(
+                ADMIN_CHANEL_ID,
+                text=notif_text,
+            )
+        else:
+            text = "Похоже, что то вы уже отменили бронирование на эту встречу"
 
     await bot.send_message(
         callback_query.from_user.id,

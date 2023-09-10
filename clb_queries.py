@@ -30,11 +30,9 @@ class ClbAdd(CallbackData, prefix="add"):
     action: str = Action.add
     postfix: str
     pk: int | None = None
-    extra_pk: int | None = None
 
 
 class ClbDelete(CallbackData, prefix="delete"):
     action: str = Action.delete
     postfix: str
     pk: int
-    extra_pk: int | None = None

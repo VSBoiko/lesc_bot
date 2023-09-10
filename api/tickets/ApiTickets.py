@@ -6,5 +6,6 @@ class ApiTickets(ApiBase):
     def __init__(self, base_url: T_HOST):
         super().__init__(base_url)
 
-    def get_tickets(self) -> list[Ticket]:
-        return [Ticket(**ticket) for ticket in self._api_get_tickets()]
+    async def get_tickets(self) -> list[Ticket]:
+        tickets = await self._api_get_tickets()
+        return [Ticket(**ticket) for ticket in tickets]
