@@ -29,8 +29,7 @@ class Meeting(Base):
             self._set_place(place)
 
         tickets: list[dict] = kwargs.get("tickets") if "tickets" in kwargs else []
-        if tickets:
-            self._set_tickets(tickets)
+        self._set_tickets(tickets)
 
     def get_place(self) -> Place:
         return self._place
@@ -76,3 +75,5 @@ class Meeting(Base):
 
     def _set_place(self, value: dict):
         self._place: Place = Place(**value)
+
+
