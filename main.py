@@ -12,7 +12,7 @@ from api.meetings.ApiMeetings import ApiMeetings
 from api.meetings.Meeting import Meeting
 from api.members.ApiMembers import ApiMember
 from api.members.Member import Member
-from clb_queries import ClbShowList, ClbShowDetail, ClbAdd, ClbPrefix
+from clb_queries import ClbShowList, ClbShowDetail, ClbAdd, ClbDelete, ClbPrefix
 from api.places.Place import Place
 from api.tickets.Ticket import Ticket
 from msg_texts.MessagesText import MessagesText
@@ -96,7 +96,7 @@ async def callback_dates(callback_query: types.CallbackQuery):
     )
 
 
-@dp.callback_query(ClbShowDetail.filter(F.postfix == ClbPrefix.meeting))
+@router.callback_query(ClbShowDetail.filter(F.postfix == ClbPrefix.meeting))
 async def callback_meetings(callback_query: types.CallbackQuery, callback_data: ClbShowDetail):
     await asyncio.gather(before_(callback_query.id))
 
@@ -106,6 +106,13 @@ async def callback_meetings(callback_query: types.CallbackQuery, callback_data: 
             callback_query.from_user.id,
             text="Похоже, что то сломалось, "
                  "я не смог найти встречу, на которую вы хотите записаться( Напишите моим разработчикам",
+            reply_to_message_id=callback_query.message.message_id,
+        )
+        return
+    elif not meeting.get_tickets():
+        await bot.send_message(
+            callback_query.from_user.id,
+            text="Бронирований на эту встречу пока что нет, они появятся чуть позже",
             reply_to_message_id=callback_query.message.message_id,
         )
         return
@@ -122,7 +129,19 @@ async def callback_meetings(callback_query: types.CallbackQuery, callback_data: 
 
     btn_builder = InlineKeyboardBuilder()
     free_tickets: list[Ticket] = meeting.get_free_tickets()
-    if meeting.check_booking_by_td_id(tg_id=member.get_tg_id()):
+    member_ticket = meeting.get_ticket_by_tg_id(tg_id=member.get_tg_id())
+    if member_ticket:
+        if not member_ticket:
+            await bot.send_message(
+                callback_query.from_user.id,
+                text="Похоже, что то сломалось, "
+                     "я не смог найти ваш билет, напишите, пожалуйста, моим разработчикам",
+                reply_to_message_id=callback_query.message.message_id,
+            )
+        btn_builder.button(
+            text="Отменить бронирование",
+            callback_data=ClbDelete(postfix=ClbPrefix.booking, pk=member_ticket.get_booking().get_pk())
+        )
         tickets_info: str = msg_text.get_booking_already()
     elif free_tickets:
         btn_builder.button(
@@ -152,11 +171,12 @@ async def callback_meetings(callback_query: types.CallbackQuery, callback_data: 
     )
 
 
-@dp.callback_query(ClbAdd.filter(F.postfix == ClbPrefix.booking))
-async def clb_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd):
+@router.callback_query(ClbAdd.filter(F.postfix == ClbPrefix.booking))
+async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd):
     await asyncio.gather(before_(callback_query.id))
 
     # todo добавить оплату
+
     member: Member = api_members.get_member_by_tg_id(tg_id=callback_query.from_user.id)
     if not member:
         await bot.send_message(
@@ -205,6 +225,23 @@ async def clb_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
         callback_query.from_user.id,
         text=text,
         reply_to_message_id=callback_query.message.message_id,
+    )
+
+
+@router.callback_query(ClbDelete.filter(F.postfix == ClbPrefix.booking))
+async def delete_booking(callback_query: types.CallbackQuery, callback_data: ClbDelete):
+    await before_(callback_query_id=callback_query.id)
+
+    result = api_bookings.delete_booking(pk=callback_data.pk)
+    if result:
+        text = "Бронирование отменено, посмотри встречи на другую дату"
+    else:
+        text = "Похоже, что то вы уже отменили бронирование на эту встречу"
+
+    await bot.send_message(
+        callback_query.from_user.id,
+        text=text,
+        reply_to_message_id=callback_query.message.message_id
     )
 
 

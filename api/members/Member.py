@@ -7,6 +7,9 @@ class Member(Base):
     def __init__(
         self, tg_id: int, login: str, name: str, surname: str, pk: int | None = None, **kwargs
     ):
+        if not pk:
+            pk = kwargs.get("id")
+
         super().__init__(pk=pk)
 
         self._tg_id: int = tg_id

@@ -11,7 +11,7 @@ class ClbPrefix(StrEnum):
 
 class Action(StrEnum):
     add: str = auto()
-    remove: str = auto()
+    delete: str = auto()
     show: str = auto()
 
 
@@ -30,3 +30,9 @@ class ClbAdd(CallbackData, prefix="add"):
     action: str = Action.add
     postfix: str
     pk: int | None = None
+
+
+class ClbDelete(CallbackData, prefix="delete"):
+    action: str = Action.delete
+    postfix: str
+    pk: int

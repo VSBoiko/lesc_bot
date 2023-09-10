@@ -22,16 +22,6 @@ meetings = api_meetings.get_meetings()
 # n = Booking(date_time=datetime.now().strftime(datetime_format_str_api), is_paid=True)
 # api_bookings.add_booking(n, 5, 3)
 
+r = api_bookings.delete_booking(pk=8)
 
-
-from enum import StrEnum, auto
-
-
-class ClbPrefix(StrEnum):
-    meeting = auto()
-    booking = auto()
-
-
-d = ClbPrefix
 pass
-

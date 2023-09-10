@@ -28,6 +28,11 @@ def api_post(url: str, data: dict) -> dict:
     return json.loads(result.text)
 
 
+def api_delete(url: str, data: dict) -> bool:
+    result: requests.Response = requests.delete(url=url, data=json.dumps(data), headers=HEADERS)
+    return str(result.status_code).startswith("20")
+
+
 class ApiBase:
     def __init__(self, base_url: T_HOST):
         self.base: T_HOST = base_url
@@ -39,6 +44,9 @@ class ApiBase:
 
     def _api_add_booking(self, **kwargs) -> dict:
         return api_post(url=f"{self.base}/api/bookings/", data=kwargs)
+
+    def _api_delete_booking(self, **kwargs):
+        return api_delete(url=f"{self.base}/api/bookings/", data=kwargs)
 
     def _api_get_places(self, **kwargs) -> list[dict]:
         params: str = self._get_str_from_kwargs(kwargs)

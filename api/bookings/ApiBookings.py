@@ -25,3 +25,9 @@ class ApiBookings(ApiBase):
             return Booking(**result)
         else:
             raise
+
+    def delete_booking(self, pk: int) -> bool:
+        result: dict = self._api_delete_booking(
+            pk=pk,
+        )
+        return bool(result)

@@ -54,12 +54,23 @@ class Meeting(Base):
 
     def check_booking_by_td_id(self, tg_id: int) -> bool:
         busy_tickets: list[Ticket] = self.get_busy_tickets()
+        if not busy_tickets:
+            return False
+
         members: list[Member] = [t.get_booking_member() for t in busy_tickets]
         if not members:
             return False
 
         check_result: list = list(filter(lambda x: x.get_tg_id() == tg_id, members))
         return bool(check_result)
+
+    def get_ticket_by_tg_id(self, tg_id) -> Ticket | None:
+        busy_tickets: list[Ticket] = self.get_busy_tickets()
+        if not busy_tickets:
+            return None
+
+        check_result: list = list(filter(lambda x: x.get_booking_member().get_tg_id() == tg_id, busy_tickets))
+        return check_result[0] if check_result else None
 
     def add_booking(self):
         pass
