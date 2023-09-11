@@ -6,6 +6,7 @@ from aiogram.filters.callback_data import CallbackData
 class ClbPrefix(StrEnum):
     meeting: str = auto()
     booking: str = auto()
+    confirm_booking: str = auto()
     dates: str = auto()
 
 

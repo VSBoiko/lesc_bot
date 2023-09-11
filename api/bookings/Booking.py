@@ -34,6 +34,9 @@ class Booking(Base):
     def is_paid(self) -> bool:
         return self._is_paid
 
+    def set_is_paid(self, value: bool):
+        self._is_paid = value
+
     def _set_date_time(self, value: datetime):
         self._date_time: datetime = value
 

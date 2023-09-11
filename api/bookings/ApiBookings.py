@@ -29,3 +29,14 @@ class ApiBookings(ApiBase):
 
     async def delete_booking(self, pk: int) -> bool:
         return await self._api_delete_booking(pk=pk)
+
+    async def update_booking(self, booking: Booking) -> Booking:
+        result: dict = await self._api_patch_booking(
+            pk=booking.get_pk(),
+            date_time=booking.get_date_time().strftime(datetime_format_str_api),
+            is_paid=booking.is_paid()
+        )
+        if result:
+            return Booking(**result)
+        else:
+            raise

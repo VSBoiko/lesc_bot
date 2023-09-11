@@ -35,7 +35,17 @@ async def api_delete(url: str, data: dict) -> bool:
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         async with session.delete(url=url, data=json.dumps(data)) as response:
             return response.status == 204
-            
+
+
+async def api_patch(url: str, data: dict) -> dict:
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with session.patch(url=url, data=json.dumps(data)) as response:
+            if str(response.status).startswith("20"):
+                text = await response.text()
+                return json.loads(text)
+            else:
+                return {}
+
 
 class ApiBase:
     def __init__(self, base_url: T_HOST):
@@ -51,6 +61,9 @@ class ApiBase:
 
     async def _api_delete_booking(self, **kwargs):
         return await api_delete(url=f"{self.base}/api/bookings/", data=kwargs)
+
+    async def _api_patch_booking(self, **kwargs):
+        return await api_patch(url=f"{self.base}/api/bookings/", data=kwargs)
 
     async def _api_get_places(self, **kwargs) -> list[dict]:
         params: str = self._get_str_from_kwargs(kwargs)
