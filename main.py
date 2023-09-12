@@ -19,8 +19,9 @@ from api.places.Place import Place
 from api.tickets.Ticket import Ticket
 from msg_texts.MessagesText import MessagesText
 from msg_texts.ButtonsText import ButtonsText
-from settings import TOKEN, HOST, ADMIN_CHANEL_ID, DB_REDIS
+from settings import TOKEN, HOST, ADMIN_CHANEL_ID, REDIS_HOST, REDIS_PORT
 from api.settings import datetime_format_str, datetime_format_str_api
+from utils.RedisHandler import RedisHandler
 
 START_MENU: dict = {
     ClbPostfix.dates: "Даты",
@@ -38,7 +39,7 @@ api_members = ApiMember(HOST)
 api_meetings = ApiMeetings(HOST)
 api_bookings = ApiBookings(HOST)
 
-db_redis = DB_REDIS
+db_redis = RedisHandler(host=REDIS_HOST, port=REDIS_PORT)
 
 
 @router.message(Command("start"))
@@ -201,7 +202,11 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
     btn_builder = InlineKeyboardBuilder()
     if ticket:
         booking: Booking = ticket.get_booking()
-        redis_booking: str = db_redis.get(f"{ClbPostfix.confirm_booking}_{booking.get_pk()}")
+        redis_key = db_redis.generate_key([
+            ClbPostfix.confirm_booking,
+            booking.get_pk(),
+        ])
+        redis_booking: str = db_redis.get(redis_key)
         if booking.is_paid():
             await bot.send_message(
                 chat_id=callback_query.from_user.id,
@@ -324,9 +329,13 @@ async def confirm_booking(callback_query: types.CallbackQuery, callback_data: Cl
             text="Мы подтвердили вашу оплату, спасибо, ждем вас на встрече!",
         )
     else:
+        redis_key = db_redis.generate_key(key_parts=[
+            ClbPostfix.confirm_booking,
+            booking.get_pk()
+        ])
         db_redis.set(
-            f"{ClbPostfix.confirm_booking}_{booking.get_pk()}",
-            json.dumps({
+            key=redis_key,
+            value=json.dumps({
                 "booking_pk": booking.get_pk(),
                 "member_tg_id": member.get_tg_id(),
             })
@@ -357,7 +366,11 @@ async def confirm_booking(callback_query: types.CallbackQuery, callback_data: Cl
 async def confirm_booking_admin(callback_query: types.CallbackQuery, callback_data: ClbConfirm):
     await before_(callback_query.id)
 
-    redis_info_json: str = db_redis.get(f"{ClbPostfix.confirm_booking}_{callback_data.pk}")
+    redis_key = db_redis.generate_key([
+        ClbPostfix.confirm_booking,
+        callback_data.pk,
+    ])
+    redis_info_json: str = db_redis.get(redis_key)
     redis_info = json.loads(redis_info_json)
     booking_pk = redis_info.get("booking_pk")
     member_tg_id = redis_info.get("member_tg_id")
@@ -367,7 +380,7 @@ async def confirm_booking_admin(callback_query: types.CallbackQuery, callback_da
     else:
         booking.set_is_paid(True)
         _ = await api_bookings.update_booking(booking)
-        db_redis.delete(f"{ClbPostfix.confirm_booking}_{booking_pk}")
+        db_redis.delete(redis_key)
         admin_text = "Бронь подтвердил, участника оповестил, что все оплачено и все ок"
         await bot.send_message(
             chat_id=member_tg_id,
