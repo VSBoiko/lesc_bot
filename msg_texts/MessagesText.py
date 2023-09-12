@@ -33,4 +33,4 @@ class MessagesText:
 
     @staticmethod
     def get_booking_already():
-        return "Вы уже сделали бронь на это занятие, приходите!"
+        return "Вы уже сделали бронь на это занятие, подвердите оплату и приходите!"

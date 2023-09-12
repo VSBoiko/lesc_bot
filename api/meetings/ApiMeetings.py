@@ -20,5 +20,5 @@ class ApiMeetings(ApiBase):
 
     async def get_future_meetings(self) -> list[Meeting]:
         date_time_str: str = (datetime.now() + timedelta(hours=1)).strftime(datetime_format_str_api)
-        meetings: list[dict] = await self._api_get_meetings(date_time_gte=date_time_str, can_be_booked=True)
+        meetings: list[dict] = await self._api_get_meetings(date_time_gte=date_time_str, can_be_booked=int(True))
         return [Meeting(**meeting) for meeting in meetings]

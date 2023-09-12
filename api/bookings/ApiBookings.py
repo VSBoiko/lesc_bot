@@ -12,7 +12,7 @@ class ApiBookings(ApiBase):
         return [Booking(**booking) for booking in bookings]
 
     async def get_booking_by_pk(self, pk: int) -> Booking | None:
-        booking = await self._api_get_bookings(pk=pk)
+        booking = await self._api_get_bookings(id=pk)
         return Booking(**booking[0]) if booking else None
 
     async def add_booking(self, new_booking: Booking, member_id, ticket_id,) -> Booking:

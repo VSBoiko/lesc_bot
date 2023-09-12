@@ -86,7 +86,7 @@ class ApiBase:
         return await api_get(url=f"{self.base}/api/bookings?{params}")
 
     def _get_str_from_kwargs(self, kwargs: dict) -> str:
-        params: str = ""
+        params = []
         for key, val in kwargs.items():
-            params += f"{key}={val}"
-        return params
+            params.append(f"{key}={val}")
+        return "&".join(params)

@@ -3,10 +3,14 @@ from enum import StrEnum, auto
 from aiogram.filters.callback_data import CallbackData
 
 
-class ClbPrefix(StrEnum):
+ADMIN_PREFIX = "admin"
+
+
+class ClbPostfix(StrEnum):
     meeting: str = auto()
     booking: str = auto()
     confirm_booking: str = auto()
+    confirm_booking_adm: str = auto()
     dates: str = auto()
 
 
@@ -14,6 +18,7 @@ class Action(StrEnum):
     add: str = auto()
     delete: str = auto()
     show: str = auto()
+    confirm: str = auto()
 
 
 class ClbShowList(CallbackData, prefix="show_list"):
@@ -35,5 +40,11 @@ class ClbAdd(CallbackData, prefix="add"):
 
 class ClbDelete(CallbackData, prefix="delete"):
     action: str = Action.delete
+    postfix: str
+    pk: int
+
+
+class ClbConfirm(CallbackData, prefix="confirm"):
+    action: str = Action.confirm
     postfix: str
     pk: int

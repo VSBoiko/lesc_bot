@@ -34,3 +34,13 @@ class Member(Base):
 
     def get_pk(self) -> int:
         return self._pk
+
+    def get_link(self):
+        return f"https://t.me/{self.get_login()[1:]}"
+
+    def get_full_name(self):
+        full_name_parts = [
+            self.get_name(),
+            self.get_surname(),
+        ]
+        return " ".join([x for x in full_name_parts if x])

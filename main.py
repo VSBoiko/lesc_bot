@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import datetime
 
 from aiogram import Bot, Dispatcher, types, Router
@@ -13,17 +14,16 @@ from api.meetings.ApiMeetings import ApiMeetings
 from api.meetings.Meeting import Meeting
 from api.members.ApiMembers import ApiMember
 from api.members.Member import Member
-from clb_queries import ClbShowList, ClbShowDetail, ClbAdd, ClbDelete, ClbPrefix
+from clb_queries import ClbShowList, ClbShowDetail, ClbAdd, ClbDelete, ClbPostfix, ClbConfirm
 from api.places.Place import Place
 from api.tickets.Ticket import Ticket
 from msg_texts.MessagesText import MessagesText
 from msg_texts.ButtonsText import ButtonsText
-from settings import TOKEN, HOST, ADMIN_CHANEL_ID
+from settings import TOKEN, HOST, ADMIN_CHANEL_ID, DB_REDIS
 from api.settings import datetime_format_str, datetime_format_str_api
 
-
 START_MENU: dict = {
-    ClbPrefix.dates: "Даты",
+    ClbPostfix.dates: "Даты",
 }
 
 bot = Bot(token=TOKEN, parse_mode=ParseMode.MARKDOWN)
@@ -38,9 +38,11 @@ api_members = ApiMember(HOST)
 api_meetings = ApiMeetings(HOST)
 api_bookings = ApiBookings(HOST)
 
+db_redis = DB_REDIS
+
 
 @router.message(Command("start"))
-async def start_menu(message: types.Message):
+async def start(message: types.Message):
     from_user: User = message.from_user
     member: Member = await api_members.get_member_by_tg_id(tg_id=from_user.id)
     if not member:
@@ -65,8 +67,8 @@ async def start_menu(message: types.Message):
     )
 
 
-@router.callback_query(ClbShowList.filter(F.postfix == ClbPrefix.dates))
-async def show_active_meetings(callback_query: types.CallbackQuery):
+@router.callback_query(ClbShowList.filter(F.postfix == ClbPostfix.dates))
+async def show_meetings_list(callback_query: types.CallbackQuery):
     await before_(callback_query.id)
 
     meetings: list[Meeting] = await api_meetings.get_future_meetings()
@@ -88,7 +90,7 @@ async def show_active_meetings(callback_query: types.CallbackQuery):
         btn_builder.button(
             text=f"{meeting_date} - {place_name}",
             callback_data=ClbShowDetail(
-                postfix=ClbPrefix.meeting,
+                postfix=ClbPostfix.meeting,
                 pk=meeting.get_pk()
             ),
         )
@@ -102,8 +104,8 @@ async def show_active_meetings(callback_query: types.CallbackQuery):
     )
 
 
-@router.callback_query(ClbShowDetail.filter(F.postfix == ClbPrefix.meeting))
-async def callback_meetings(callback_query: types.CallbackQuery, callback_data: ClbShowDetail):
+@router.callback_query(ClbShowDetail.filter(F.postfix == ClbPostfix.meeting))
+async def show_meeting_detail(callback_query: types.CallbackQuery, callback_data: ClbShowDetail):
     await before_(callback_query.id)
 
     meeting: Meeting = await api_meetings.get_meeting_by_pk(pk=callback_data.pk)
@@ -118,7 +120,7 @@ async def callback_meetings(callback_query: types.CallbackQuery, callback_data: 
     elif not meeting.get_tickets():
         await bot.send_message(
             chat_id=callback_query.from_user.id,
-            text="Бронирований на эту встречу пока что нет, они появятся чуть позже",
+            text="Бронирований на эту встречу пока что не доступны, мы откроем запись чуть позже",
             reply_to_message_id=callback_query.message.message_id,
         )
         return
@@ -147,13 +149,13 @@ async def callback_meetings(callback_query: types.CallbackQuery, callback_data: 
             )
         btn_builder.button(
             text="Отменить бронирование",
-            callback_data=ClbDelete(postfix=ClbPrefix.booking, pk=meeting.get_pk())
+            callback_data=ClbDelete(postfix=ClbPostfix.booking, pk=meeting.get_pk())
         )
         tickets_info += msg_text.get_booking_already()
     elif free_tickets:
         btn_builder.button(
             text=btn_text.get_booking(),
-            callback_data=ClbAdd(postfix=ClbPrefix.booking, pk=meeting.get_pk())
+            callback_data=ClbAdd(postfix=ClbPostfix.booking, pk=meeting.get_pk())
         )
         tickets_info += msg_text.get_cnt_free_tickets(len(free_tickets))
     else:
@@ -178,7 +180,7 @@ async def callback_meetings(callback_query: types.CallbackQuery, callback_data: 
     )
 
 
-@router.callback_query(ClbAdd.filter(F.postfix == ClbPrefix.booking))
+@router.callback_query(ClbAdd.filter(F.postfix == ClbPostfix.booking))
 async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd):
     await before_(callback_query.id)
 
@@ -194,14 +196,38 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
 
     # todo добавить условие что тьюторы могут бронировать места без денег
     # todo система оповещений пользователей что скоро занятие
-    meeting = await api_meetings.get_meeting_by_pk(pk=callback_data.pk)
-    if meeting.check_booking_by_td_id(tg_id=member.get_tg_id()):
-        await bot.send_message(
-            chat_id=callback_query.from_user.id,
-            text=msg_text.get_booking_already(),
-            reply_to_message_id=callback_query.message.message_id,
-        )
-        return
+    meeting: Meeting = await api_meetings.get_meeting_by_pk(pk=callback_data.pk)
+    ticket = meeting.get_ticket_by_tg_id(member.get_tg_id())
+    btn_builder = InlineKeyboardBuilder()
+    if ticket:
+        booking: Booking = ticket.get_booking()
+        redis_booking: str = db_redis.get(f"{ClbPostfix.confirm_booking}_{booking.get_pk()}")
+        if booking.is_paid():
+            await bot.send_message(
+                chat_id=callback_query.from_user.id,
+                text="Вы подтвердили оплату на встречу и мы увидели оплату, все супер!",
+                reply_to_message_id=callback_query.message.message_id,
+            )
+            return
+        elif redis_booking:
+            await bot.send_message(
+                chat_id=callback_query.from_user.id,
+                text="Вы подтвердили оплату на встречу, мы проверяем вашу оплату и подтвердим бронирование",
+                reply_to_message_id=callback_query.message.message_id,
+            )
+            return
+        else:
+            btn_builder.button(
+                text="Подтвердить оплату",
+                callback_data=ClbConfirm(postfix=ClbPostfix.confirm_booking, pk=meeting.get_pk()),
+            )
+            await bot.send_message(
+                chat_id=callback_query.from_user.id,
+                text=msg_text.get_booking_already(),
+                reply_markup=btn_builder.as_markup(),
+                reply_to_message_id=callback_query.message.message_id,
+            )
+            return
 
     free_tickets = meeting.get_free_tickets()
     if not free_tickets:
@@ -212,9 +238,8 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
         )
         return
 
-    btn_builder = InlineKeyboardBuilder()
     try:
-        new_booking: Booking = await api_bookings.add_booking(
+        _ = await api_bookings.add_booking(
             new_booking=Booking(
                 date_time=datetime.now().strftime(datetime_format_str_api),
                 is_paid=False,
@@ -228,7 +253,7 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
         text = msg_text.get_booking_success()
         btn_builder.button(
             text="Подтвердить оплату",
-            callback_data=ClbShowDetail(postfix=ClbPrefix.confirm_booking, pk=new_booking.get_pk()),
+            callback_data=ClbConfirm(postfix=ClbPostfix.confirm_booking, pk=meeting.get_pk()),
         )
 
     await bot.send_message(
@@ -239,7 +264,7 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
     )
 
 
-@router.callback_query(ClbDelete.filter(F.postfix == ClbPrefix.booking))
+@router.callback_query(ClbDelete.filter(F.postfix == ClbPostfix.booking))
 async def delete_booking(callback_query: types.CallbackQuery, callback_data: ClbDelete):
     await before_(callback_query_id=callback_query.id)
 
@@ -248,18 +273,34 @@ async def delete_booking(callback_query: types.CallbackQuery, callback_data: Clb
     if not member_ticket:
         text = "Похоже, что то вы уже отменили бронирование на эту встречу"
     else:
-        result = await api_bookings.delete_booking(pk=member_ticket.get_booking().get_pk())
+        booking_pk = member_ticket.get_booking().get_pk()
+        result = await api_bookings.delete_booking(pk=booking_pk)
         if result:
             # todo доавить оповещение что нужно вернуть деньги юзверю и что деньги нельзя вернуть в день встречи
             if member_ticket.get_booking().is_paid():
                 text = "Бронирование отменено, денежки сейчас вернем, посмотри встречи на другую дату"
             else:
                 text = "Бронирование отменено, посмотри встречи на другую дату"
-            notif_text = f"какой то хмырь с именем [{member_ticket.get_booking_member().get_name()} {member_ticket.get_booking_member().get_surname()}]" \
-                         f"(https://t.me/{member_ticket.get_booking_member().get_login()[1:]}) отменил бронирование на встречу {meeting.get_name()}"
-            await send_msg_to_admin_chanel(notif_text)
+            member = member_ticket.get_booking_member()
+            notif_text = f"какой то хмырь с именем [{member.get_full_name()}]({member.get_link()}) " \
+                         f"отменил бронирование на встречу {meeting.get_name()}"
+            btn_builder_adm = InlineKeyboardBuilder()
+            btn_clb_data = ClbDelete(
+                prefix=ClbPostfix.booking,
+                pk=booking_pk,
+            )
+            btn_builder_adm.button(
+                text="Подтвердить возврат оплаты",
+                callback_data=btn_clb_data
+            )
+            await bot.send_message(
+                chat_id=ADMIN_CHANEL_ID,
+                text=notif_text,
+                reply_markup=btn_builder_adm.as_markup(),
+            )
         else:
-            text = "Похоже, что то вы уже отменили бронирование на эту встречу"
+            text = "Похоже, что то сломалось, я не смог отменить бронирование сам, " \
+                   "напишите, пожалуйста, моим разработчикам",
 
     await bot.send_message(
         chat_id=callback_query.from_user.id,
@@ -268,18 +309,74 @@ async def delete_booking(callback_query: types.CallbackQuery, callback_data: Clb
     )
 
 
-@router.callback_query(ClbShowDetail.filter(F.postfix == "confirm_booking"))
-async def confirm_booking(callback_query: types.CallbackQuery, callback_data: ClbShowDetail):
+@router.callback_query(ClbConfirm.filter(F.postfix == ClbPostfix.confirm_booking))
+async def confirm_booking(callback_query: types.CallbackQuery, callback_data: ClbConfirm):
     await before_(callback_query.id)
 
-    booking: Booking = await api_bookings.get_booking_by_pk(pk=callback_data.pk)
+    meeting: Meeting = await api_meetings.get_meeting_by_pk(callback_data.pk)
+    ticket: Ticket = meeting.get_ticket_by_tg_id(tg_id=callback_query.from_user.id)
+    booking: Booking = ticket.get_booking()
+    member: Member = ticket.get_booking_member()
+
     if booking.is_paid():
-        text = "Мы подтвердили ваше бронирование, уря"
-    booking.set_is_paid(True)
-    _ = await api_bookings.update_booking(booking)
+        await bot.send_message(
+            chat_id=callback_query.from_user.id,
+            text="Мы подтвердили вашу оплату, спасибо, ждем вас на встрече!",
+        )
+    else:
+        db_redis.set(
+            f"{ClbPostfix.confirm_booking}_{booking.get_pk()}",
+            json.dumps({
+                "booking_pk": booking.get_pk(),
+                "member_tg_id": member.get_tg_id(),
+            })
+        )
+
+        btn_builder_adm = InlineKeyboardBuilder()
+        btn_builder_adm.button(
+            text="Подтвердить бронирование",
+            callback_data=ClbConfirm(postfix=ClbPostfix.confirm_booking_adm, pk=booking.get_pk())
+        )
+
+        notif_text = f"[{member.get_full_name()}]({member.get_link()}) говорит, что оплатил " \
+                     f"встречу '{meeting.get_name()}', подтвердите оплату"
+
+        await bot.send_message(
+            chat_id=ADMIN_CHANEL_ID,
+            text=notif_text,
+            reply_markup=btn_builder_adm.as_markup(),
+        )
+
+        await bot.send_message(
+            chat_id=callback_query.from_user.id,
+            text="Мы проверяем оплату, если сейчас ночь, то мы подтвердим бронирование утром, не волнуйтесь, мы вас ждем",
+        )
+
+
+@router.callback_query(ClbConfirm.filter(F.postfix == ClbPostfix.confirm_booking_adm))
+async def confirm_booking_admin(callback_query: types.CallbackQuery, callback_data: ClbConfirm):
+    await before_(callback_query.id)
+
+    redis_info_json: str = db_redis.get(f"{ClbPostfix.confirm_booking}_{callback_data.pk}")
+    redis_info = json.loads(redis_info_json)
+    booking_pk = redis_info.get("booking_pk")
+    member_tg_id = redis_info.get("member_tg_id")
+    booking: Booking = await api_bookings.get_booking_by_pk(pk=booking_pk)
+    if booking.is_paid():
+        admin_text = "Вы уже подтвердили оплату пользователя, все ок"
+    else:
+        booking.set_is_paid(True)
+        _ = await api_bookings.update_booking(booking)
+        db_redis.delete(f"{ClbPostfix.confirm_booking}_{booking_pk}")
+        admin_text = "Бронь подтвердил, участника оповестил, что все оплачено и все ок"
+        await bot.send_message(
+            chat_id=member_tg_id,
+            text="Мы подтвердили вашу оплату, спасибо, ждем вас на встрече!",
+        )
+
     await bot.send_message(
-        chat_id=callback_query.from_user.id,
-        text="Мы подтвердили ваше бронирование, уря",
+        chat_id=ADMIN_CHANEL_ID,
+        text=admin_text,
     )
 
 
