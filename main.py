@@ -9,6 +9,8 @@ from aiogram.types import User
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import bold
 from magic_filter import F
+
+from TgButtons import get_meetings_btn_builder
 from api.bookings.ApiBookings import ApiBookings
 from api.bookings.Booking import Booking
 from api.meetings.ApiMeetings import ApiMeetings
@@ -48,11 +50,12 @@ async def start(message: types.Message):
     from_user: User = message.from_user
     member: Member = await api_members.get_member_by_tg_id(tg_id=from_user.id)
     if not member:
-        # todo добавить в except конкретную ошибку
         try:
             login = from_user.mention
-        except Exception as e:
+        except AttributeError:
             login = f"@{from_user.username}"
+        except Exception as e:
+            login = None
 
         new_member = Member(
             tg_id=from_user.id,
@@ -86,30 +89,13 @@ async def show_meetings_list(callback_query: types.CallbackQuery):
         await after_(callback_query.id)
         return
 
-    def get_date_time(m: Meeting) -> datetime:
-        return m.get_date_time()
-
-    meetings.sort(key=get_date_time)
-    btn_builder = InlineKeyboardBuilder()
-    for meeting in meetings:
-        meeting_date: str = meeting.get_date_time().strftime(datetime_format_str)
-        place_name: str = meeting.get_place().get_name()
-        btn_builder.button(
-            text=f"{meeting_date} - {place_name}",
-            callback_data=ClbShowDetail(
-                postfix=ClbPostfix.meeting,
-                pk=meeting.get_pk()
-            ),
-        )
-
-    btn_builder.adjust(1)
+    btn_builder = get_meetings_btn_builder(meetings=meetings)
 
     await bot.send_message(
         chat_id=callback_query.from_user.id,
         text=msg_text.get_club_dates(),
         reply_markup=btn_builder.as_markup(),
     )
-
     await after_(callback_query.id)
 
 
@@ -125,7 +111,7 @@ async def show_meeting_detail(callback_query: types.CallbackQuery, callback_data
         await after_(callback_query.id)
         return
 
-    elif not meeting.get_tickets():
+    elif not meeting.get_tickets() or not meeting.get_can_be_booked():
         await callback_query.answer(
             text="Бронирований на эту встречу пока что не доступны, мы откроем запись чуть позже",
             show_alert=True,
@@ -253,6 +239,7 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
             new_booking=Booking(
                 date_time=datetime.now().strftime(datetime_format_str_api),
                 is_paid=False,
+                user_confirm_paid=False,
             ),
             ticket_id=free_tickets[0].get_pk(),
             member_id=member.get_pk(),
@@ -328,8 +315,12 @@ async def delete_booking(callback_query: types.CallbackQuery, callback_data: Clb
             )
 
             member = member_ticket.get_booking_member()
-            notif_text = f"какой то хмырь с именем [{member.get_full_name()}]({member.get_link()}) " \
-                         f"отменил бронирование на встречу {meeting.get_name()}\n\nнадо вернуть ему бабосы"
+            if member.get_login():
+                notif_text = f"какой то хмырь с именем [{member.get_full_name()}]({member.get_link()}) " \
+                             f"отменил бронирование на встречу {meeting.get_name()}\n\nнадо вернуть ему бабосы"
+            else:
+                notif_text = f"какой то хмырь с именем {member.get_full_name()} " \
+                             f"отменил бронирование на встречу {meeting.get_name()}\n\nнадо вернуть ему бабосы"
 
             await bot.send_message(
                 chat_id=ADMIN_CHANEL_ID,
@@ -337,9 +328,17 @@ async def delete_booking(callback_query: types.CallbackQuery, callback_data: Clb
                 reply_markup=btn_builder_adm.as_markup(),
             )
         else:
+            meetings: list[Meeting] = await api_meetings.get_future_meetings()
+            if not meetings:
+                text: str = "Бронирование отменено, готовим ближайшие встречи и скоро вы сможете записаться на них"
+            else:
+                text: str = "Бронирование отменено, посмотри встречи на другую дату"
+
+            btn_builder: InlineKeyboardBuilder = get_meetings_btn_builder(meetings=meetings)
             await bot.send_message(
                 chat_id=callback_query.from_user.id,
-                text="Бронирование отменено, посмотри встречи на другую дату",
+                text=text,
+                reply_markup=btn_builder.as_markup(),
                 reply_to_message_id=callback_query.message.message_id
             )
 
@@ -369,6 +368,9 @@ async def confirm_booking(callback_query: types.CallbackQuery, callback_data: Cl
             show_alert=True,
         )
     else:
+        booking.set_user_confirm_paid(True)
+        _ = await api_bookings.update_booking(booking)
+
         msg_to_user = await bot.send_message(
             chat_id=callback_query.from_user.id,
             text="Мы проверяем оплату, если сейчас ночь, то мы подтвердим бронирование утром, не волнуйтесь, мы вас ждем",
@@ -389,9 +391,19 @@ async def confirm_booking(callback_query: types.CallbackQuery, callback_data: Cl
             text="Подтвердить бронирование",
             callback_data=ClbConfirm(postfix=ClbPostfix.confirm_booking_adm, pk=booking.get_pk())
         )
+        btn_builder_adm.button(
+            text="Отменить бронирование",
+            callback_data=ClbDelete(postfix=ClbPostfix.booking_adm, pk=booking.get_pk())
+        )
 
-        notif_text = f"[{member.get_full_name()}]({member.get_link()}) говорит, что оплатил " \
-                     f"встречу '{meeting.get_name()}', подтвердите оплату"
+        btn_builder_adm.adjust(1)
+
+        if member.get_login():
+            notif_text = f"[{member.get_full_name()}]({member.get_link()}) говорит, что оплатил " \
+                         f"встречу '{meeting.get_name()}', подтвердите оплату"
+        else:
+            notif_text = f"{member.get_full_name()} говорит, что оплатил " \
+                         f"встречу '{meeting.get_name()}', подтвердите оплату"
 
         await bot.send_message(
             chat_id=ADMIN_CHANEL_ID,
@@ -405,14 +417,20 @@ async def confirm_booking(callback_query: types.CallbackQuery, callback_data: Cl
 @router.callback_query(ClbDelete.filter(F.postfix == ClbPostfix.booking_adm))
 async def delete_booking_admin(callback_query: types.CallbackQuery, callback_data: ClbDelete):
     # todo добавить кнопку в меню мои бронирования
-    # todo добавить кнопку нет оплату не подтвердили
+    chat_id: int = callback_query.message.chat.id
+
     redis_key: str = db_redis.generate_key([
         ClbPostfix.booking,
         callback_data.pk,
     ])
-
-    chat_id: int = callback_query.message.chat.id
     redis_info_json: str = db_redis.get(redis_key)
+    if not redis_info_json:
+        redis_key: str = db_redis.generate_key([
+            ClbPostfix.confirm_booking,
+            callback_data.pk,
+        ])
+        redis_info_json: str = db_redis.get(redis_key)
+
     if not redis_info_json:
         await bot.send_message(
             chat_id=chat_id,
@@ -450,9 +468,8 @@ async def delete_booking_admin(callback_query: types.CallbackQuery, callback_dat
         await after_(callback_query.id)
         return
 
-    booking.set_is_paid(True)
-    _ = await api_bookings.delete_booking(booking)
     db_redis.delete(redis_key)
+    await api_bookings.delete_booking(booking)
 
     user_chat_id = redis_info.get("user_chat_id", None)
     msg_to_user_id = redis_info.get("msg_to_user_id", None)
@@ -465,14 +482,24 @@ async def delete_booking_admin(callback_query: types.CallbackQuery, callback_dat
             message_id=msg_to_user_id
         )
 
+    if booking.is_paid():
+        text = "Бронь отменили, участника оповестил, что бабки вернули и все ок"
+        usr_text = "Мы отменили вашу бронь и вернули деньги, увидимся на другой встрече, выберите для себя подходящую"
+    else:
+        text = "Бронь отменили, участника оповестил, бабок он не платил"
+        usr_text = "Мы не подтвердили ваше бронирование, увидимся на другой встрече"
+
+    meetings = await api_meetings.get_future_meetings()
+    btn_builder = get_meetings_btn_builder(meetings)
     await bot.send_message(
         chat_id=member_tg_id,
-        text="Мы отменили вашу бронь и вернули деньги, увидимся на другой встрече, выберите для себя подходящую",
+        text=usr_text,
+        reply_markup=btn_builder.as_markup()
     )
 
     await bot.edit_message_reply_markup(chat_id=chat_id, message_id=callback_query.message.message_id)
     await bot.edit_message_text(
-        text=callback_query.message.md_text + "\n\nБронь отменили, участника оповестил, что бабки вернули и все ок",
+        text=callback_query.message.md_text + f"\n\n{text}",
         chat_id=chat_id,
         message_id=callback_query.message.message_id
     )

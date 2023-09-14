@@ -19,6 +19,7 @@ class ApiBookings(ApiBase):
         result: dict = await self._api_add_booking(
             date_time=new_booking.get_date_time().strftime(datetime_format_str_api),
             is_paid=new_booking.is_paid(),
+            user_confirm_paid=new_booking.is_user_confirm_paid(),
             member_id=member_id,
             ticket_id=ticket_id,
         )
@@ -34,7 +35,8 @@ class ApiBookings(ApiBase):
         result: dict = await self._api_patch_booking(
             pk=booking.get_pk(),
             date_time=booking.get_date_time().strftime(datetime_format_str_api),
-            is_paid=booking.is_paid()
+            is_paid=booking.is_paid(),
+            user_confirm_paid=booking.is_user_confirm_paid(),
         )
         if result:
             return Booking(**result)
