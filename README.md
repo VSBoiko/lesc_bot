@@ -12,3 +12,6 @@ for pkg in pkgs:
 pip install pip-autoremove
 pip-autoremove Flask -y
 ```
+
+
+[how to add permission to tg bot for sending messages in tg group](https://gist.github.com/zapisnicar/247d53f8e3980f6013a221d8c7459dc3)
