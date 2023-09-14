@@ -9,6 +9,7 @@ ADMIN_PREFIX = "admin"
 class ClbPostfix(StrEnum):
     meeting: str = auto()
     booking: str = auto()
+    booking_adm: str = auto()
     confirm_booking: str = auto()
     confirm_booking_adm: str = auto()
     dates: str = auto()
@@ -35,7 +36,7 @@ class ClbShowDetail(CallbackData, prefix="show_detail"):
 class ClbAdd(CallbackData, prefix="add"):
     action: str = Action.add
     postfix: str
-    pk: int | None = None
+    pk: int
 
 
 class ClbDelete(CallbackData, prefix="delete"):

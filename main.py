@@ -7,6 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import User
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.markdown import bold
 from magic_filter import F
 from api.bookings.ApiBookings import ApiBookings
 from api.bookings.Booking import Booking
@@ -47,9 +48,15 @@ async def start(message: types.Message):
     from_user: User = message.from_user
     member: Member = await api_members.get_member_by_tg_id(tg_id=from_user.id)
     if not member:
+        # todo добавить в except конкретную ошибку
+        try:
+            login = from_user.mention
+        except Exception as e:
+            login = f"@{from_user.username}"
+
         new_member = Member(
             tg_id=from_user.id,
-            login=from_user.mention,
+            login=login,
             name=from_user.first_name,
             surname=from_user.last_name,
         )
@@ -70,14 +77,13 @@ async def start(message: types.Message):
 
 @router.callback_query(ClbShowList.filter(F.postfix == ClbPostfix.dates))
 async def show_meetings_list(callback_query: types.CallbackQuery):
-    await before_(callback_query.id)
-
     meetings: list[Meeting] = await api_meetings.get_future_meetings()
     if not meetings:
-        await bot.send_message(
-            chat_id=callback_query.from_user.id,
+        await callback_query.answer(
             text="Мы готовим ближайшие встречи и скоро вы сможете записаться на них",
+            show_alert=True,
         )
+        await after_(callback_query.id)
         return
 
     def get_date_time(m: Meeting) -> datetime:
@@ -104,50 +110,51 @@ async def show_meetings_list(callback_query: types.CallbackQuery):
         reply_markup=btn_builder.as_markup(),
     )
 
+    await after_(callback_query.id)
+
 
 @router.callback_query(ClbShowDetail.filter(F.postfix == ClbPostfix.meeting))
 async def show_meeting_detail(callback_query: types.CallbackQuery, callback_data: ClbShowDetail):
-    await before_(callback_query.id)
-
     meeting: Meeting = await api_meetings.get_meeting_by_pk(pk=callback_data.pk)
     if not meeting:
-        await bot.send_message(
-            chat_id=callback_query.from_user.id,
+        await callback_query.answer(
             text="Похоже, что то сломалось, "
                  "я не смог найти встречу, на которую вы хотите записаться( Напишите моим разработчикам",
-            reply_to_message_id=callback_query.message.message_id,
+            show_alert=True,
         )
+        await after_(callback_query.id)
         return
+
     elif not meeting.get_tickets():
-        await bot.send_message(
-            chat_id=callback_query.from_user.id,
+        await callback_query.answer(
             text="Бронирований на эту встречу пока что не доступны, мы откроем запись чуть позже",
-            reply_to_message_id=callback_query.message.message_id,
+            show_alert=True,
         )
+        await after_(callback_query.id)
         return
 
     member: Member = await api_members.get_member_by_tg_id(tg_id=callback_query.from_user.id)
     if not member:
-        await bot.send_message(
-            chat_id=callback_query.from_user.id,
-            text="Похоже, что то сломалось, "
-                 "я не смог вас узнать, напишите, пожалуйста, моим разработчикам",
-            reply_to_message_id=callback_query.message.message_id,
+        await callback_query.answer(
+            text="Похоже, что то сломалось, я не смог вас узнать, напишите, пожалуйста, моим разработчикам",
+            show_alert=True,
         )
+        await after_(callback_query.id)
         return
 
-    btn_builder = InlineKeyboardBuilder()
     free_tickets: list[Ticket] = meeting.get_free_tickets()
     member_ticket: Ticket | None = meeting.get_ticket_by_tg_id(tg_id=member.get_tg_id())
+    btn_builder = InlineKeyboardBuilder()
     tickets_info: str = ""
     if member_ticket:
         if not member_ticket:
-            await bot.send_message(
-                chat_id=callback_query.from_user.id,
-                text="Похоже, что то сломалось, "
-                     "я не смог найти ваш билет, напишите, пожалуйста, моим разработчикам",
-                reply_to_message_id=callback_query.message.message_id,
+            await callback_query.answer(
+                text="Похоже, что то сломалось, я не смог найти ваш билет, напишите, пожалуйста, моим разработчикам",
+                show_alert=True,
             )
+            await after_(callback_query.id)
+            return
+
         btn_builder.button(
             text="Отменить бронирование",
             callback_data=ClbDelete(postfix=ClbPostfix.booking, pk=meeting.get_pk())
@@ -168,7 +175,8 @@ async def show_meeting_detail(callback_query: types.CallbackQuery, callback_data
     text: str = "\n".join((
         msg_text.get_date_and_time(meeting_date),
         msg_text.get_place(place_text),
-        "\n" + tickets_info
+        f"\nСтоимость - {bold(int(free_tickets[0].get_price()))} {bold('₽')}"
+        "\n" + tickets_info,
     ))
 
     btn_builder.adjust(1)
@@ -180,19 +188,18 @@ async def show_meeting_detail(callback_query: types.CallbackQuery, callback_data
         reply_to_message_id=callback_query.message.message_id,
     )
 
+    await after_(callback_query.id)
+
 
 @router.callback_query(ClbAdd.filter(F.postfix == ClbPostfix.booking))
 async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd):
-    await before_(callback_query.id)
-
     member: Member = await api_members.get_member_by_tg_id(tg_id=callback_query.from_user.id)
     if not member:
-        await bot.send_message(
-            chat_id=callback_query.from_user.id,
-            text="Похоже, что то сломалось, "
-                 "я не смог вас узнать, напишите, пожалуйста, моим разработчикам",
-            reply_to_message_id=callback_query.message.message_id,
+        await callback_query.answer(
+            text="Похоже, что то сломалось, я не смог вас узнать, напишите, пожалуйста, моим разработчикам",
+            show_alert=True,
         )
+        await after_(callback_query.id)
         return
 
     # todo добавить условие что тьюторы могут бронировать места без денег
@@ -206,41 +213,39 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
             ClbPostfix.confirm_booking,
             booking.get_pk(),
         ])
+
         redis_booking: str = db_redis.get(redis_key)
         if booking.is_paid():
-            await bot.send_message(
-                chat_id=callback_query.from_user.id,
+            await callback_query.answer(
                 text="Вы подтвердили оплату на встречу и мы увидели оплату, все супер!",
-                reply_to_message_id=callback_query.message.message_id,
+                show_alert=True,
             )
+            await after_(callback_query.id)
             return
+
         elif redis_booking:
-            await bot.send_message(
-                chat_id=callback_query.from_user.id,
+            await callback_query.answer(
                 text="Вы подтвердили оплату на встречу, мы проверяем вашу оплату и подтвердим бронирование",
-                reply_to_message_id=callback_query.message.message_id,
+                show_alert=True,
             )
+            await after_(callback_query.id)
             return
+
         else:
-            btn_builder.button(
-                text="Подтвердить оплату",
-                callback_data=ClbConfirm(postfix=ClbPostfix.confirm_booking, pk=meeting.get_pk()),
-            )
-            await bot.send_message(
-                chat_id=callback_query.from_user.id,
+            await callback_query.answer(
                 text=msg_text.get_booking_already(),
-                reply_markup=btn_builder.as_markup(),
-                reply_to_message_id=callback_query.message.message_id,
+                show_alert=True,
             )
+            await after_(callback_query.id)
             return
 
     free_tickets = meeting.get_free_tickets()
     if not free_tickets:
-        await bot.send_message(
-            chat_id=callback_query.from_user.id,
+        await callback_query.answer(
             text=msg_text.get_no_tickets(),
-            reply_to_message_id=callback_query.message.message_id,
+            show_alert=True,
         )
+        await after_(callback_query.id)
         return
 
     try:
@@ -268,76 +273,114 @@ async def add_booking(callback_query: types.CallbackQuery, callback_data: ClbAdd
         reply_to_message_id=callback_query.message.message_id,
     )
 
+    await after_(callback_query.id)
+
 
 @router.callback_query(ClbDelete.filter(F.postfix == ClbPostfix.booking))
 async def delete_booking(callback_query: types.CallbackQuery, callback_data: ClbDelete):
-    await before_(callback_query_id=callback_query.id)
-
     meeting = await api_meetings.get_meeting_by_pk(pk=callback_data.pk)
     member_ticket = meeting.get_ticket_by_tg_id(tg_id=callback_query.from_user.id)
     if not member_ticket:
-        text = "Похоже, что то вы уже отменили бронирование на эту встречу"
+        await callback_query.answer(
+            text="Похоже, что то вы уже отменили бронирование на эту встречу",
+            show_alert=True,
+        )
     else:
-        booking_pk = member_ticket.get_booking().get_pk()
-        result = await api_bookings.delete_booking(pk=booking_pk)
-        if result:
-            # todo доавить оповещение что нужно вернуть деньги юзверю и что деньги нельзя вернуть в день встречи
-            if member_ticket.get_booking().is_paid():
-                text = "Бронирование отменено, денежки сейчас вернем, посмотри встречи на другую дату"
-            else:
-                text = "Бронирование отменено, посмотри встречи на другую дату"
-            member = member_ticket.get_booking_member()
-            notif_text = f"какой то хмырь с именем [{member.get_full_name()}]({member.get_link()}) " \
-                         f"отменил бронирование на встречу {meeting.get_name()}"
+        booking = member_ticket.get_booking()
+        redis_key = db_redis.generate_key(key_parts=[
+            ClbPostfix.booking,
+            booking.get_pk()
+        ])
+        redis_info = db_redis.get(redis_key)
+        if redis_info:
+            await callback_query.answer(
+                text="Бронирование отменено, сейчас вернем деньги, посмотри встречи на другую дату",
+                show_alert=True
+            )
+        elif booking.is_paid():
+            # todo доавить что деньги нельзя вернуть в день встречи
+            msg_to_user: types.Message = await bot.send_message(
+                chat_id=callback_query.from_user.id,
+                text="Бронирование отменено, сейчас вернем деньги, посмотри встречи на другую дату",
+                reply_to_message_id=callback_query.message.message_id
+            )
+
+            booking_pk = booking.get_pk()
             btn_builder_adm = InlineKeyboardBuilder()
             btn_clb_data = ClbDelete(
-                prefix=ClbPostfix.booking,
+                postfix=ClbPostfix.booking_adm,
                 pk=booking_pk,
             )
             btn_builder_adm.button(
                 text="Подтвердить возврат оплаты",
                 callback_data=btn_clb_data
             )
+
+            member: Member = member_ticket.get_booking_member()
+            db_redis.set(
+                key=redis_key,
+                value=json.dumps({
+                    "booking_pk": booking_pk,
+                    "member_tg_id": member.get_tg_id(),
+                    "user_chat_id": callback_query.from_user.id,
+                    "msg_to_user_id": msg_to_user.message_id,
+                })
+            )
+
+            member = member_ticket.get_booking_member()
+            notif_text = f"какой то хмырь с именем [{member.get_full_name()}]({member.get_link()}) " \
+                         f"отменил бронирование на встречу {meeting.get_name()}\n\nнадо вернуть ему бабосы"
+
             await bot.send_message(
                 chat_id=ADMIN_CHANEL_ID,
                 text=notif_text,
                 reply_markup=btn_builder_adm.as_markup(),
             )
         else:
-            text = "Похоже, что то сломалось, я не смог отменить бронирование сам, " \
-                   "напишите, пожалуйста, моим разработчикам",
+            await bot.send_message(
+                chat_id=callback_query.from_user.id,
+                text="Бронирование отменено, посмотри встречи на другую дату",
+                reply_to_message_id=callback_query.message.message_id
+            )
 
-    await bot.send_message(
-        chat_id=callback_query.from_user.id,
-        text=text,
-        reply_to_message_id=callback_query.message.message_id
-    )
+    await after_(callback_query_id=callback_query.id)
 
 
 @router.callback_query(ClbConfirm.filter(F.postfix == ClbPostfix.confirm_booking))
 async def confirm_booking(callback_query: types.CallbackQuery, callback_data: ClbConfirm):
-    await before_(callback_query.id)
-
     meeting: Meeting = await api_meetings.get_meeting_by_pk(callback_data.pk)
     ticket: Ticket = meeting.get_ticket_by_tg_id(tg_id=callback_query.from_user.id)
     booking: Booking = ticket.get_booking()
     member: Member = ticket.get_booking_member()
 
-    if booking.is_paid():
-        await bot.send_message(
-            chat_id=callback_query.from_user.id,
+    redis_key = db_redis.generate_key(key_parts=[
+        ClbPostfix.confirm_booking,
+        booking.get_pk()
+    ])
+    redis_info = db_redis.get(redis_key)
+    if redis_info:
+        await callback_query.answer(
+            text="Мы проверяем оплату, если сейчас ночь, то мы подтвердим бронирование утром, не волнуйтесь, мы вас ждем",
+            show_alert=True
+        )
+    elif booking.is_paid():
+        await callback_query.answer(
             text="Мы подтвердили вашу оплату, спасибо, ждем вас на встрече!",
+            show_alert=True,
         )
     else:
-        redis_key = db_redis.generate_key(key_parts=[
-            ClbPostfix.confirm_booking,
-            booking.get_pk()
-        ])
+        msg_to_user = await bot.send_message(
+            chat_id=callback_query.from_user.id,
+            text="Мы проверяем оплату, если сейчас ночь, то мы подтвердим бронирование утром, не волнуйтесь, мы вас ждем",
+        )
+
         db_redis.set(
             key=redis_key,
             value=json.dumps({
                 "booking_pk": booking.get_pk(),
                 "member_tg_id": member.get_tg_id(),
+                "user_chat_id": callback_query.from_user.id,
+                "msg_to_user_id": msg_to_user.message_id,
             })
         )
 
@@ -356,44 +399,163 @@ async def confirm_booking(callback_query: types.CallbackQuery, callback_data: Cl
             reply_markup=btn_builder_adm.as_markup(),
         )
 
+    await after_(callback_query.id)
+
+
+@router.callback_query(ClbDelete.filter(F.postfix == ClbPostfix.booking_adm))
+async def delete_booking_admin(callback_query: types.CallbackQuery, callback_data: ClbDelete):
+    # todo добавить кнопку в меню мои бронирования
+    # todo добавить кнопку нет оплату не подтвердили
+    redis_key: str = db_redis.generate_key([
+        ClbPostfix.booking,
+        callback_data.pk,
+    ])
+
+    chat_id: int = callback_query.message.chat.id
+    redis_info_json: str = db_redis.get(redis_key)
+    if not redis_info_json:
         await bot.send_message(
-            chat_id=callback_query.from_user.id,
-            text="Мы проверяем оплату, если сейчас ночь, то мы подтвердим бронирование утром, не волнуйтесь, мы вас ждем",
+            chat_id=chat_id,
+            text="похоже, что пользователь хз как отменил то ли записался то ли хер его, кароч в redis нет инфы про отмену",
         )
+        await bot.edit_message_reply_markup(chat_id=chat_id, message_id=callback_query.message.message_id)
+        await bot.edit_message_text(
+            text=callback_query.message.md_text +
+                 "\n\nпохоже, что пользователь хз как отменил то ли записался то ли хер его, кароч в redis нет инфы про отмену",
+            chat_id=chat_id,
+            message_id=callback_query.message.message_id
+        )
+
+        await after_(callback_query.id)
+        return
+
+    redis_info: dict = json.loads(redis_info_json)
+    booking_pk: int | None = redis_info.get("booking_pk", None)
+    member_tg_id: int | None = redis_info.get("member_tg_id", None)
+    if not booking_pk or not member_tg_id:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="что по пошло не так и поломалось я хз, не нашел PK брони или tg id юзера, может позже",
+        )
+
+        await after_(callback_query.id)
+        return
+
+    booking: Booking = await api_bookings.get_booking_by_pk(pk=booking_pk)
+    if not booking:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="что по пошло не так и поломалось я хз, не нашел бронь, может позже",
+        )
+        await after_(callback_query.id)
+        return
+
+    booking.set_is_paid(True)
+    _ = await api_bookings.delete_booking(booking)
+    db_redis.delete(redis_key)
+
+    user_chat_id = redis_info.get("user_chat_id", None)
+    msg_to_user_id = redis_info.get("msg_to_user_id", None)
+    if not user_chat_id or not msg_to_user_id:
+        # todo дописать отправку текста с ошибкой (подумать куда)
+        pass
+    else:
+        await bot.delete_message(
+            chat_id=user_chat_id,
+            message_id=msg_to_user_id
+        )
+
+    await bot.send_message(
+        chat_id=member_tg_id,
+        text="Мы отменили вашу бронь и вернули деньги, увидимся на другой встрече, выберите для себя подходящую",
+    )
+
+    await bot.edit_message_reply_markup(chat_id=chat_id, message_id=callback_query.message.message_id)
+    await bot.edit_message_text(
+        text=callback_query.message.md_text + "\n\nБронь отменили, участника оповестил, что бабки вернули и все ок",
+        chat_id=chat_id,
+        message_id=callback_query.message.message_id
+    )
+
+    await after_(callback_query.id)
 
 
 @router.callback_query(ClbConfirm.filter(F.postfix == ClbPostfix.confirm_booking_adm))
 async def confirm_booking_admin(callback_query: types.CallbackQuery, callback_data: ClbConfirm):
-    await before_(callback_query.id)
-
-    redis_key = db_redis.generate_key([
+    redis_key: str = db_redis.generate_key([
         ClbPostfix.confirm_booking,
         callback_data.pk,
     ])
+
+    chat_id: int = callback_query.message.chat.id
     redis_info_json: str = db_redis.get(redis_key)
-    redis_info = json.loads(redis_info_json)
-    booking_pk = redis_info.get("booking_pk")
-    member_tg_id = redis_info.get("member_tg_id")
-    booking: Booking = await api_bookings.get_booking_by_pk(pk=booking_pk)
-    if booking.is_paid():
-        admin_text = "Вы уже подтвердили оплату пользователя, все ок"
-    else:
-        booking.set_is_paid(True)
-        _ = await api_bookings.update_booking(booking)
-        db_redis.delete(redis_key)
-        admin_text = "Бронь подтвердил, участника оповестил, что все оплачено и все ок"
+    if not redis_info_json:
         await bot.send_message(
-            chat_id=member_tg_id,
-            text="Мы подтвердили вашу оплату, спасибо, ждем вас на встрече!",
+            chat_id=chat_id,
+            text="похоже, что пользователь отменил бронирование на встречу, ну и ладно",
+        )
+        await bot.edit_message_reply_markup(chat_id=chat_id, message_id=callback_query.message.message_id)
+        await bot.edit_message_text(
+            text=callback_query.message.md_text + "\n\nпохоже, что пользователь отменил бронирование на встречу, ну и ладно",
+            chat_id=chat_id,
+            message_id=callback_query.message.message_id
+        )
+
+        await after_(callback_query.id)
+        return
+
+    redis_info: dict = json.loads(redis_info_json)
+    booking_pk: int | None = redis_info.get("booking_pk", None)
+    member_tg_id: int | None = redis_info.get("member_tg_id", None)
+    if not booking_pk or not member_tg_id:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="что по пошло не так и поломалось я хз, не нашел PK брони или tg id юзера, может позже",
+        )
+
+        await after_(callback_query.id)
+        return
+
+    booking: Booking = await api_bookings.get_booking_by_pk(pk=booking_pk)
+    if not booking:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="что по пошло не так и поломалось я хз, не нашел бронь, может позже",
+        )
+        await after_(callback_query.id)
+        return
+
+    booking.set_is_paid(True)
+    _ = await api_bookings.update_booking(booking)
+    db_redis.delete(redis_key)
+
+    user_chat_id = redis_info.get("user_chat_id", None)
+    msg_to_user_id = redis_info.get("msg_to_user_id", None)
+    if not user_chat_id or not msg_to_user_id:
+        # todo дописать отправку текста с ошибкой (подумать куда)
+        pass
+    else:
+        await bot.delete_message(
+            chat_id=user_chat_id,
+            message_id=msg_to_user_id
         )
 
     await bot.send_message(
-        chat_id=ADMIN_CHANEL_ID,
-        text=admin_text,
+        chat_id=member_tg_id,
+        text="Мы подтвердили вашу оплату, спасибо, ждем вас на встрече!",
     )
 
+    await bot.edit_message_reply_markup(chat_id=chat_id, message_id=callback_query.message.message_id)
+    await bot.edit_message_text(
+        text=callback_query.message.md_text + "\n\nБронь подтвердил, участника оповестил, что все оплачено и все ок",
+        chat_id=chat_id,
+        message_id=callback_query.message.message_id
+    )
 
-async def before_(callback_query_id: str) -> None:
+    await after_(callback_query.id)
+
+
+async def after_(callback_query_id: str) -> None:
     await bot.answer_callback_query(callback_query_id)
 
 

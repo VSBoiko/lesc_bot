@@ -27,8 +27,8 @@ class ApiBookings(ApiBase):
         else:
             raise
 
-    async def delete_booking(self, pk: int) -> bool:
-        return await self._api_delete_booking(pk=pk)
+    async def delete_booking(self, booking: Booking) -> bool:
+        return await self._api_delete_booking(pk=booking.get_pk())
 
     async def update_booking(self, booking: Booking) -> Booking:
         result: dict = await self._api_patch_booking(

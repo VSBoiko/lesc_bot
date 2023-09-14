@@ -18,7 +18,8 @@ class RedisHandler:
         if not key_parts:
             key_parts = []
 
-        return "_".join(key_parts)
+        key_parts_str = list(map(lambda x: str(x), key_parts))
+        return "_".join(key_parts_str)
 
     def set(self, key: str, value: Any = None):
         self.db_redis.set(key, value)
