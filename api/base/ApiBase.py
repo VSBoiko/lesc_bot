@@ -16,7 +16,7 @@ def api_get(url: str, data: dict | None = None) -> list[dict]:
     if data is None:
         data: dict = {}
 
-    result: requests.Response = requests.get(url=url, params=data)
+    result: requests.Response = requests.get(url=url, params=data, verify=False)
     if str(result.status_code).startswith("20"):
         return json.loads(result.text)
     else:
@@ -24,7 +24,7 @@ def api_get(url: str, data: dict | None = None) -> list[dict]:
 
 
 def api_post(url: str, data: dict) -> dict:
-    result: requests.Response = requests.post(url=url, data=json.dumps(data), headers=HEADERS)
+    result: requests.Response = requests.post(url=url, data=json.dumps(data), headers=HEADERS, verify=False)
     return json.loads(result.text)
 
 
