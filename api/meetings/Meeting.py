@@ -74,6 +74,9 @@ class Meeting(Base):
         check_result: list = list(filter(lambda x: x.get_booking_member().get_tg_id() == tg_id, busy_tickets))
         return check_result[0] if check_result else None
 
+    def is_meeting_today(self):
+        return self.get_date_time().date() == datetime.today().date()
+
     def add_booking(self):
         pass
 

@@ -3,10 +3,13 @@ from enum import StrEnum, auto
 from aiogram.filters.callback_data import CallbackData
 
 
-ADMIN_PREFIX = "admin"
+class StartMenu(StrEnum):
+    dates: str = "Даты"
+    member_bookings: str = "Мои бронирования"
 
 
-class ClbPostfix(StrEnum):
+class Postfix(StrEnum):
+    start: str = auto()
     meeting: str = auto()
     booking: str = auto()
     booking_adm: str = auto()

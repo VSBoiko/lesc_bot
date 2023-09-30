@@ -36,6 +36,7 @@ class Member(Base):
         return self._pk
 
     def get_link(self):
+
         return f"https://t.me/{self.get_login()[1:]}"
 
     def get_full_name(self):
