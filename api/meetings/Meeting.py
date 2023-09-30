@@ -29,8 +29,7 @@ class Meeting(Base):
             self._set_place(place)
 
         tickets: list[dict] = kwargs.get("tickets") if "tickets" in kwargs else []
-        if tickets:
-            self._set_tickets(tickets)
+        self._set_tickets(tickets)
 
     def get_place(self) -> Place:
         return self._place
@@ -53,14 +52,30 @@ class Meeting(Base):
     def get_busy_tickets(self) -> list[Ticket]:
         return list(filter(lambda x: x.has_booking(), self._tickets))
 
-    def check_booking_by_td_id(self, tg_id: int) -> bool:
+    def get_ticket_by_td_id(self, tg_id: int) -> Ticket | None:
         busy_tickets: list[Ticket] = self.get_busy_tickets()
-        members: list[Member] = [t.get_booking_member() for t in busy_tickets]
-        if not members:
-            return False
+        if not busy_tickets:
+            return None
 
-        check_result: list = list(filter(lambda x: x.get_tg_id() == tg_id, members))
-        return bool(check_result)
+        member_ticket: list[Ticket] = list(filter(lambda x: x.get_booking_member() == tg_id, busy_tickets))
+        if not member_ticket:
+            return None
+
+        return member_ticket[0]
+
+    def check_booking_by_td_id(self, tg_id: int) -> bool:
+        return bool(self.get_ticket_by_td_id(tg_id=tg_id))
+
+    def get_ticket_by_tg_id(self, tg_id) -> Ticket | None:
+        busy_tickets: list[Ticket] = self.get_busy_tickets()
+        if not busy_tickets:
+            return None
+
+        check_result: list = list(filter(lambda x: x.get_booking_member().get_tg_id() == tg_id, busy_tickets))
+        return check_result[0] if check_result else None
+
+    def is_meeting_today(self):
+        return self.get_date_time().date() == datetime.today().date()
 
     def add_booking(self):
         pass
@@ -76,3 +91,5 @@ class Meeting(Base):
 
     def _set_place(self, value: dict):
         self._place: Place = Place(**value)
+
+

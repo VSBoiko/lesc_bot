@@ -10,13 +10,15 @@ class ApiMeetings(ApiBase):
     def __init__(self, base_url: T_HOST):
         super().__init__(base_url)
 
-    def get_meetings(self) -> list[Meeting]:
-        return [Meeting(**meeting) for meeting in self._api_get_meetings()]
+    async def get_meetings(self) -> list[Meeting]:
+        meetings: list[dict] = await self._api_get_meetings()
+        return [Meeting(**meeting) for meeting in meetings]
 
-    def get_meeting_by_pk(self, pk: int) -> Meeting | None:
-        result: list[Meeting] = [Meeting(**member) for member in self._api_get_meetings(id=pk)]
-        return result[0] if result else None
+    async def get_meeting_by_pk(self, pk: int) -> Meeting | None:
+        meeting: list[dict] = await self._api_get_meetings(id=pk)
+        return Meeting(**meeting[0]) if meeting else None
 
-    def get_future_meetings(self) -> list[Meeting]:
-        date_time_str = (datetime.now() + timedelta(hours=1)).strftime(datetime_format_str_api)
-        return [Meeting(**meeting) for meeting in self._api_get_meetings(date_time_gte=date_time_str)]
+    async def get_future_meetings(self) -> list[Meeting]:
+        date_time_str: str = (datetime.now() + timedelta(hours=1)).strftime(datetime_format_str_api)
+        meetings: list[dict] = await self._api_get_meetings(date_time_gte=date_time_str)
+        return [Meeting(**meeting) for meeting in meetings]

@@ -13,7 +13,7 @@ class MessagesText:
 
     @staticmethod
     def get_place(place_str):
-        return f"Место: {place_str}"
+        return f"Место встречи - {place_str}"
 
     @staticmethod
     def get_cnt_free_tickets(cnt_free_tickets):
@@ -33,4 +33,4 @@ class MessagesText:
 
     @staticmethod
     def get_booking_already():
-        return "Вы уже сделали бронь на это занятие, приходите!"
+        return "Вы уже сделали бронь на это занятие, подвердите оплату и приходите!"

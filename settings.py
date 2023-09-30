@@ -1,5 +1,6 @@
 import os
 
+import redis
 from dotenv import load_dotenv
 
 
@@ -8,5 +9,6 @@ load_dotenv(dotenv_path=dotenv_path)
 
 TOKEN = os.getenv("TOKEN")
 HOST = os.getenv("HOST")
-
-db_datetime_format = "%d.%m.%Y %H:%M:%S"            # Для базы SQLite - поле с датой имеет тип TEXT
+ADMIN_CHANEL_ID = os.getenv("ADMIN_CHANEL_ID")
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = os.getenv("REDIS_PORT")
