@@ -59,15 +59,25 @@ class ApiBase:
     async def _api_add_booking(self, **kwargs) -> dict:
         return await api_post(url=f"{self.base}/api/bookings/", data=kwargs)
 
+    async def _api_add_subscribe(self, **kwargs) -> dict:
+        return await api_post(url=f"{self.base}/api/subscribes/", data=kwargs)
+
     async def _api_delete_booking(self, **kwargs):
         return await api_delete(url=f"{self.base}/api/bookings/", data=kwargs)
 
     async def _api_patch_booking(self, **kwargs):
         return await api_patch(url=f"{self.base}/api/bookings/", data=kwargs)
 
+    async def _api_patch_subscribe(self, **kwargs):
+        return await api_patch(url=f"{self.base}/api/subscribes/", data=kwargs)
+
     async def _api_get_places(self, **kwargs) -> list[dict]:
         params: str = self._get_str_from_kwargs(kwargs)
         return await api_get(url=f"{self.base}/api/places?{params}")
+
+    async def _api_get_subscribes(self, **kwargs) -> list[dict]:
+        params: str = self._get_str_from_kwargs(kwargs)
+        return await api_get(url=f"{self.base}/api/subscribes?{params}")
 
     async def _api_get_members(self, **kwargs) -> list[dict]:
         params: str = self._get_str_from_kwargs(kwargs)
