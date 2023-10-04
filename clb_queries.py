@@ -5,6 +5,7 @@ from aiogram.filters.callback_data import CallbackData
 
 class StartMenu(StrEnum):
     dates: str = "Даты"
+    subscription: str = "Купить абонемент"
     member_bookings: str = "Мои бронирования"
 
 

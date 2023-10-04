@@ -9,8 +9,8 @@ from api.members.Member import Member
 from api.places.Place import Place
 from api.settings import datetime_format_str
 from api.tickets.Ticket import Ticket
-from msg_texts.ButtonsText import ButtonsText
-from msg_texts.MessagesText import MessagesText
+from texts.ButtonsText import ButtonsText
+from texts.MessagesText import MessagesText
 from settings import HOST
 
 
@@ -56,9 +56,9 @@ class Service:
                 tickets_info: str = "\nМы создали бронирование!\nОплатите его по номер +7 (800) 555-35-35 (Соня Батьковна А.) на Сбербанк / Тинькофф и подтвердите перевод по кнопке 'Подтвердить'"
 
         elif free_tickets:
-            tickets_info: str = msg_text.get_cnt_free_tickets(len(free_tickets))
+            tickets_info: str = msg_text.cnt_free_tickets(len(free_tickets))
         else:
-            tickets_info: str = msg_text.get_no_tickets()
+            tickets_info: str = msg_text.no_free_tickets()
 
         meeting_date: str = meeting.get_date_time().strftime(datetime_format_str)
         place: Place = meeting.get_place()
@@ -68,7 +68,7 @@ class Service:
 
         text_parts = [
             underline(meeting_date),
-            msg_text.get_place(place_text),
+            msg_text.meeting_place(place_text),
             f"\nСтоимость - {bold(price_str)}",
         ]
 

@@ -21,8 +21,9 @@ from api.members.ApiMembers import ApiMember
 from api.members.Member import Member
 from clb_queries import ClbShowList, ClbShowDetail, ClbAdd, ClbDelete, Postfix, ClbConfirm
 from api.tickets.Ticket import Ticket
-from msg_texts.MessagesText import MessagesText
-from msg_texts.ButtonsText import ButtonsText
+from texts.Admins import Admins
+from texts.Errors import Errors
+from texts.Messages import Messages
 from settings import TOKEN, HOST, ADMIN_CHANEL_ID, REDIS_HOST, REDIS_PORT
 from api.settings import datetime_format_str_api
 from utils.RedisHandler import RedisHandler
@@ -33,8 +34,9 @@ dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-msg_text = MessagesText()
-btn_text = ButtonsText()
+text_msg = Messages()
+text_errors = Errors()
+text_admins = Admins()
 
 api_members = ApiMember(HOST)
 api_meetings = ApiMeetings(HOST)
@@ -53,7 +55,7 @@ async def start(message: types.Message):
     bnt_builder: InlineKeyboardBuilder = TgButtonsUser.get_start_menu()
 
     await message.answer(
-        text=msg_text.get_hello(),
+        text=text_msg.hello(),
         reply_markup=bnt_builder.as_markup(),
     )
 
@@ -72,7 +74,7 @@ async def show_start_menu(callback: types.CallbackQuery):
 
     await replace_last_msg(
         callback=callback,
-        text=msg_text.get_hello(),
+        text=text_msg.hello(),
         btn_builder=btn_builder
     )
     await after_(callback=callback)
@@ -82,8 +84,10 @@ async def show_start_menu(callback: types.CallbackQuery):
 async def show_meetings_list(callback: types.CallbackQuery):
     meetings: list[Meeting] = await api_meetings.get_future_meetings()
     if not meetings:
-        text: str = "Мы готовим ближайшие встречи и скоро вы сможете записаться на них"
-        return await send_answer(callback=callback, text=text)
+        return await send_answer(
+            callback=callback,
+            text=text_msg.no_meetings()
+        )
 
     btn_builder: InlineKeyboardBuilder = TgButtonsUser.get_meetings(meetings=meetings)
     btn_builder: InlineKeyboardBuilder = TgButtonsUser.add_back(
@@ -94,7 +98,7 @@ async def show_meetings_list(callback: types.CallbackQuery):
 
     await replace_last_msg(
         callback=callback,
-        text=msg_text.get_club_dates(),
+        text=text_msg.meetings_dates(),
         btn_builder=btn_builder
     )
     await after_(callback=callback)
@@ -105,22 +109,20 @@ async def show_meeting_detail(callback: types.CallbackQuery, callback_data: ClbS
     meeting: Meeting = await api_meetings.get_meeting_by_pk(pk=callback_data.pk)
 
     if not meeting:
-        text: str = "Похоже, что то сломалось, я не смог найти встречу, на которую вы хотите записаться( Напишите моим разработчикам"
+        text: str = text_errors.cant_find_meeting()
         return await send_answer(callback=callback, text=text)
     elif not meeting.get_tickets() or not meeting.get_can_be_booked():
-        text: str = "Бронирований на эту встречу пока что не доступны, мы откроем запись чуть позже"
+        text: str = text_msg.booking_unavailable()
         return await send_answer(callback=callback, text=text)
 
     member: Member = await api_members.get_member_by_tg_id(tg_id=callback.from_user.id)
     if not member:
-        text: str = "Похоже, что то сломалось, я не смог вас узнать, напишите, пожалуйста, моим разработчикам"
+        text: str = text_errors.strange_member()
         return await send_answer(callback=callback, text=text)
 
     meeting_text: str = Service.get_meeting_text(member=member, meeting=meeting)
-    ticket: Ticket = meeting.get_ticket_by_tg_id(tg_id=member.get_tg_id())
 
     btn_builder: InlineKeyboardBuilder = TgButtonsUser.get_meeting(member=member, meeting=meeting)
-
     btn_builder: InlineKeyboardBuilder = TgButtonsUser.add_back(
         builder=btn_builder,
         callback=ClbShowList(postfix=Postfix.dates)
@@ -139,7 +141,7 @@ async def show_meeting_detail(callback: types.CallbackQuery, callback_data: ClbS
 async def add_booking(callback: types.CallbackQuery, callback_data: ClbAdd):
     member: Member = await api_members.get_member_by_tg_id(tg_id=callback.from_user.id)
     if not member:
-        text: str = "Похоже, что то сломалось, я не смог вас узнать, напишите, пожалуйста, моим разработчикам"
+        text: str = text_errors.strange_member()
         return await send_answer(callback=callback, text=text)
 
     # todo система оповещений пользователей что скоро занятие
@@ -151,17 +153,17 @@ async def add_booking(callback: types.CallbackQuery, callback_data: ClbAdd):
         redis_booking: str = db_redis.get(redis_key)
 
         if booking.is_paid():
-            text: str = "Вы подтвердили оплату на встречу и мы увидели оплату, все супер!"
+            text: str = text_msg.booking_success_pay_success()
         elif redis_booking:
-            text: str = "Вы подтвердили оплату на встречу, мы проверяем вашу оплату и подтвердим бронирование"
+            text: str = text_msg.booking_success_pay_confirm()
         else:
-            text: str = msg_text.get_booking_already()
+            text: str = text_msg.booking_already()
 
         return await send_answer(callback=callback, text=text)
 
     free_tickets: list[Ticket] = meeting.get_free_tickets()
     if not free_tickets:
-        return await send_answer(callback=callback, text=msg_text.get_no_tickets())
+        return await send_answer(callback=callback, text=text_msg.no_free_tickets())
 
     btn_builder: InlineKeyboardBuilder = TgButtons.get_empty_builder()
     try:
@@ -179,8 +181,8 @@ async def add_booking(callback: types.CallbackQuery, callback_data: ClbAdd):
             member,
             meeting,
             False,
-            f"\n{msg_text.get_smt_went_wrong()}",
-            "\nПопробуйте записаться еще раз",
+            f"\n{text_errors.smt_went_wrong()}",
+            f"\n{text_errors.try_one_more_time()}",
         )
         btn_builder = TgButtonsUser.add_booking(
             builder=btn_builder,
@@ -191,8 +193,8 @@ async def add_booking(callback: types.CallbackQuery, callback_data: ClbAdd):
             member,
             meeting,
             False,
-            "\nМы создали бронирование!",
-            "\nОплатите его по номер +7 (800) 555-35-35 (Соня Батьковна А.) на Сбербанк / Тинькофф и подтвердите перевод по кнопке 'Подтвердить'",
+            f"\n{text_msg.booking_success()}",
+            f"\n{text_msg.payment_info()}",
         )
         btn_builder = TgButtonsUser.add_payment_confirm(
             builder=btn_builder,
@@ -220,7 +222,7 @@ async def confirm_booking(callback: types.CallbackQuery, callback_data: ClbConfi
     if not ticket:
         return await send_answer(
             callback=callback,
-            text="Вы еще не забронировали место на эту встречу, вернитесь плис на меню со встречей и забронируйте снова"
+            text=text_msg.no_member_ticket()
         )
 
     booking: Booking = ticket.get_booking()
@@ -232,12 +234,12 @@ async def confirm_booking(callback: types.CallbackQuery, callback_data: ClbConfi
     if redis_info:
         return await send_answer(
             callback=callback,
-            text="Мы проверяем оплату, если сейчас ночь, то мы подтвердим бронирование утром, не волнуйтесь, мы вас ждем"
+            text=text_msg.booking_success_pay_confirm()
         )
     elif booking.is_paid():
         return await send_answer(
             callback=callback,
-            text="Мы подтвердили вашу оплату, спасибо, ждем вас на встрече!"
+            text=text_msg.booking_success_pay_success()
         )
     else:
         booking.set_user_confirm_paid(value=True)
@@ -248,15 +250,15 @@ async def confirm_booking(callback: types.CallbackQuery, callback_data: ClbConfi
             # todo вместо разработчкам писать ссылку на чат с леском (где все тьюторы)
             return await send_answer(
                 callback=callback,
-                text="Произошла какая-то ошибка при бронировании, не могу с ней разобраться сам, напишите моим разработчикам или попробуйте снова чуть позже"
+                text=text_errors.booking_error()
             )
 
         text: str = Service.get_meeting_text(
             member,
             meeting,
             False,
-            "\nВы забронировали место на эту встречу!",
-            "Мы проверяем оплату, если сейчас ночь, то мы подтвердим бронирование утром, не волнуйтесь, мы вас ждем",
+            f"\n{text_msg.booking_success()}",
+            f"\n{text_msg.booking_success_pay_confirm()}",
         )
         btn_builder = TgButtonsUser.get_meeting(member=member, meeting=meeting)
         await replace_last_msg(callback=callback, btn_builder=btn_builder, text=text)
@@ -284,12 +286,14 @@ async def confirm_booking(callback: types.CallbackQuery, callback_data: ClbConfi
         btn_builder_adm.adjust(1)
 
         if member.get_login():
-            notif_text: str = f"[{member.get_full_name()}]({member.get_link()}) говорит, что оплатил " \
-                              f"встречу '{meeting.get_name()}', подтвердите оплату"
+            user_info: str = f"[{member.get_full_name()}]({member.get_link()})"
         else:
-            notif_text: str = f"{member.get_full_name()} говорит, что оплатил " \
-                              f"встречу '{meeting.get_name()}', подтвердите оплату"
+            user_info: str = member.get_full_name()
 
+        notif_text: str = text_admins.confirm_pay(
+            user_info=user_info,
+            meeting_info=meeting.get_name(),
+        )
         await bot.send_message(
             chat_id=ADMIN_CHANEL_ID,
             text=notif_text,
@@ -315,7 +319,7 @@ async def delete_booking_confirm(callback: types.CallbackQuery, callback_data: C
 
     await replace_last_msg(
         callback=callback,
-        text="Вы отменяете бронирование в день встречи, по нашим правилам мы не можем вам вернуть деньги( Вы уверены, что хотите отменить бронирование?",
+        text=text_msg.cancel_in_meeting_day(),
         btn_builder=btn_builder,
     )
     await after_(callback=callback)
@@ -328,7 +332,7 @@ async def delete_booking(callback: types.CallbackQuery, callback_data: ClbDelete
     if not member_ticket:
         return await send_answer(
             callback=callback,
-            text="Похоже, что то вы уже отменили бронирование на эту встречу"
+            text=text_msg.cancel_already()
         )
     else:
         booking: Booking = member_ticket.get_booking()
@@ -338,13 +342,13 @@ async def delete_booking(callback: types.CallbackQuery, callback_data: ClbDelete
         if redis_info:
             return await send_answer(
                 callback=callback,
-                text="Бронирование отменено, сейчас вернем деньги, посмотри встречи на другую дату"
+                text=text_msg.cancel_with_return_money()
             )
         elif booking.is_paid() or booking.is_user_confirm_paid():
             if meeting.is_meeting_today():
-                text = "Бронирование отменено, деньги не вернем потому что вы отменили встречу в день встречи, посмотрите встречи на другую дату"
+                text = text_msg.cancel_with_return_no_money()
             else:
-                text = "Бронирование отменено, сейчас вернем деньги, посмотри встречи на другую дату"
+                text = text_msg.cancel_with_return_money()
 
             meetings: list[Meeting] = await api_meetings.get_future_meetings()
             user_btn_builder = TgButtonsUser.get_meetings(meetings=meetings)
@@ -368,11 +372,14 @@ async def delete_booking(callback: types.CallbackQuery, callback_data: ClbDelete
                 })
             )
             if member.get_login():
-                notif_text: str = f"какой то хмырь с именем [{member.get_full_name()}]({member.get_link()}) " \
-                                  f"отменил бронирование на встречу {meeting.get_name()}\n\n'надо вернуть ему бабосы'"
+                user_info: str = f"[{member.get_full_name()}]({member.get_link()})"
             else:
-                notif_text: str = f"какой то хмырь с именем {member.get_full_name()} " \
-                                  f"отменил бронирование на встречу '{meeting.get_name()}'\n\nнадо вернуть ему бабосы"
+                user_info: str = member.get_full_name()
+
+            notif_text: str = text_admins.confirm_cancel(
+                user_info=user_info,
+                meeting_info=meeting.get_name(),
+            )
 
             await bot.send_message(
                 chat_id=ADMIN_CHANEL_ID,
@@ -384,9 +391,9 @@ async def delete_booking(callback: types.CallbackQuery, callback_data: ClbDelete
 
             meetings: list[Meeting] = await api_meetings.get_future_meetings()
             if not meetings:
-                text: str = "Бронирование отменено, готовим ближайшие встречи и скоро вы сможете записаться на них"
+                text: str = text_msg.no_meetings_after_cancel()
             else:
-                text: str = "Бронирование отменено, посмотри встречи на другую дату"
+                text: str = text_msg.meeting_dates_after_cancel()
 
             btn_builder: InlineKeyboardBuilder = TgButtonsUser.get_meetings(meetings=meetings)
             await replace_last_msg(
@@ -400,15 +407,13 @@ async def delete_booking(callback: types.CallbackQuery, callback_data: ClbDelete
 
 @router.callback_query(ClbConfirm.filter(F.postfix == Postfix.confirm_booking_adm))
 async def confirm_booking_admin(callback: types.CallbackQuery, callback_data: ClbConfirm):
-    chat_id: int = callback.message.chat.id
-
     redis_key: str = db_redis.get_key_confirm(name=Postfix.booking, pk=callback_data.pk)
     redis_info_json: str = db_redis.get(redis_key)
 
     if not redis_info_json:
         await replace_last_msg(
             callback=callback,
-            text=callback.message.md_text + "\n\nпохоже, что пользователь отменил бронирование на встречу, ну и ладно",
+            text=callback.message.md_text + f"\n\n{text_admins.cancel_already()}",
             btn_builder=TgButtons.get_empty_builder(),
         )
         return await after_(callback)
@@ -419,7 +424,7 @@ async def confirm_booking_admin(callback: types.CallbackQuery, callback_data: Cl
     if not meeting_pk or not member_tg_id:
         await replace_last_msg(
             callback=callback,
-            text=callback.message.md_text + "\n\nчто по пошло не так и поломалось я хз, не нашел в редисе PK брони или tg id юзера",
+            text=callback.message.md_text + f"\n\n{text_admins.error()}, не нашел в редисе PK брони или tg id юзера",
             btn_builder=TgButtons.get_empty_builder(),
         )
         return await after_(callback)
@@ -428,7 +433,7 @@ async def confirm_booking_admin(callback: types.CallbackQuery, callback_data: Cl
     if not booking:
         await replace_last_msg(
             callback=callback,
-            text=callback.message.md_text + "\n\nчто по пошло не так и поломалось я хз, не нашел бронь, может позже",
+            text=callback.message.md_text + f"\n\n{text_admins.error()}, не нашел бронь, может позже",
             btn_builder=TgButtons.get_empty_builder(),
         )
         return await after_(callback)
@@ -454,7 +459,7 @@ async def confirm_booking_admin(callback: types.CallbackQuery, callback_data: Cl
             member,
             meeting,
             False,
-            "\nМы подтвердили вашу оплату на эту встречу, спасибо, ждем вас!",
+            f"\n{text_msg.booking_success_pay_success()}",
         )
         btn_builder = TgButtonsUser.get_meeting(member=member, meeting=meeting)
         btn_builder = TgButtonsUser.add_back(
@@ -471,7 +476,7 @@ async def confirm_booking_admin(callback: types.CallbackQuery, callback_data: Cl
 
         await replace_last_msg(
             callback=callback,
-            text=callback.message.md_text + "\n\nБронь подтвердил, участника оповестил, что все оплачено и все ок",
+            text=callback.message.md_text + f"\n\n{text_admins.booking_success()}",
             btn_builder=TgButtons.get_empty_builder()
         )
 
@@ -494,7 +499,7 @@ async def delete_booking_admin(callback: types.CallbackQuery, callback_data: Clb
     if not redis_info_json:
         await bot.send_message(
             chat_id=ADMIN_CHANEL_ID,
-            text="похоже, что пользователь хз как отменил то ли записался то ли хер его, кароч в redis нет инфы про отмену",
+            text=f"{text_admins.error()}, кароч в redis нет инфы про отмену",
         )
         return await after_(callback)
 
@@ -503,7 +508,7 @@ async def delete_booking_admin(callback: types.CallbackQuery, callback_data: Clb
     if not booking_pk or not member_tg_id:
         await bot.send_message(
             chat_id=ADMIN_CHANEL_ID,
-            text="что по пошло не так и поломалось я хз, не нашел PK брони или tg id юзера, может позже",
+            text=f"{text_admins.error()}, не нашел PK брони или tg id юзера, может позже",
         )
         return await after_(callback)
 
@@ -511,7 +516,7 @@ async def delete_booking_admin(callback: types.CallbackQuery, callback_data: Clb
     if not booking:
         await bot.send_message(
             chat_id=ADMIN_CHANEL_ID,
-            text="что по пошло не так и поломалось я хз, не нашел бронь, может позже",
+            text=f"{text_admins.error()}, не нашел бронь, может позже",
         )
         return await after_(callback)
 
@@ -530,11 +535,11 @@ async def delete_booking_admin(callback: types.CallbackQuery, callback_data: Clb
         )
 
     if booking.is_paid():
-        text = "Бронь отменили, участника оповестил, что бабки вернули и все ок"
-        usr_text = "Мы отменили вашу бронь и вернули деньги, увидимся на другой встрече, выберите для себя подходящую"
+        text = text_admins.booking_cancel_success()
+        usr_text = text_msg.cancel_with_return_success()
     else:
-        text = "Бронь отменили, участника оповестил, проверьте платил он бабки или нет, а то я хз"
-        usr_text = "Мы не подтвердили ваше бронирование, увидимся на другой встрече, если вы платили деньги, то мы их вам уже вернули"
+        text = text_admins.booking_cancel_success_check_money()
+        usr_text = text_msg.cancel_by_admin()
 
     meetings = await api_meetings.get_future_meetings()
     btn_builder = TgButtonsUser.get_meetings(meetings)

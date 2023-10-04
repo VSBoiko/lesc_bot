@@ -18,6 +18,7 @@ class TgButtonsUser:
 
     start_menu = [
         StartMenu.dates,
+        StartMenu.subscription,
         StartMenu.member_bookings,
     ]
 
@@ -81,7 +82,6 @@ class TgButtonsUser:
     @staticmethod
     def get_meeting(member: Member, meeting: Meeting) -> InlineKeyboardBuilder:
         free_tickets: list[Ticket] = meeting.get_free_tickets()
-
         btn_builder = InlineKeyboardBuilder()
         member_ticket: Ticket | None = meeting.get_ticket_by_tg_id(tg_id=member.get_tg_id())
         if member_ticket:
