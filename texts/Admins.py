@@ -4,8 +4,12 @@ class Admins:
         return f"{user_info} говорит, что оплатил встречу {meeting_info}, подтвердите оплату"
 
     @staticmethod
+    def confirm_pay_subs(user_info: str):
+        return f"{user_info} говорит, что оплатил абонемент, подтвердите оплату"
+
+    @staticmethod
     def confirm_cancel(user_info: str, meeting_info: str):
-        return f"{user_info} отменил бронирование на встречу {meeting_info}\n\nНадо вернуть ему деньги"
+        return f"{user_info} отменил запись на встречу {meeting_info}\n\nНадо вернуть ему деньги"
 
     @staticmethod
     def booking_success():
@@ -20,8 +24,23 @@ class Admins:
         return "Бронь отменили, участника оповестил, проверьте платил он бабки или нет, а то я хз"
 
     @staticmethod
-    def cancel_already():
-        return "Похоже, что пользователь отменил бронирование на встречу, ну и ладно"
+    def subscribe_success():
+        return "Абонемент подтвердил, участника оповестил, что абонемент куплен и все ок"
+
+    @staticmethod
+    def subscribe_cancel_success():
+        return "Абонемент отменил, участника оповестил, что бабки вернули и все ок"
+
+    @staticmethod
+    def subscribe_cancel_success_check_money():
+        return "Абонемент отменил, участника оповестил, проверьте платил он бабки или нет, а то я хз"
+
+
+
+    @staticmethod
+    def cancel_already(what: str):
+        return f"Похоже, что пользователь отменил {what}, ну и ладно"
+
 
     @staticmethod
     def error():

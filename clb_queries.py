@@ -4,52 +4,48 @@ from aiogram.filters.callback_data import CallbackData
 
 
 class StartMenu(StrEnum):
-    dates: str = "Даты"
-    subscription: str = "Купить абонемент"
-    member_bookings: str = "Мои бронирования"
+    meetings: str = "Встречи"
+    subscribe: str = "Мой абонемент"
+    member_bookings: str = "Мои записи"
 
 
 class Postfix(StrEnum):
     start: str = auto()
     meeting: str = auto()
+    meetings: str = auto()
     booking: str = auto()
-    booking_adm: str = auto()
-    confirm_booking: str = auto()
-    confirm_booking_adm: str = auto()
-    dates: str = auto()
+    booking_confirm: str = auto()
+    subscribe: str = auto()
+    subscribe_confirm: str = auto()
+
+    adm_booking: str = auto()
+    adm_booking_confirm: str = auto()
+    adm_subscribe: str = auto()
+    adm_subscribe_confirm: str = auto()
 
 
-class Action(StrEnum):
+class Actions(StrEnum):
     add: str = auto()
     delete: str = auto()
-    show: str = auto()
+    page: str = auto()
     confirm: str = auto()
 
 
-class ClbShowList(CallbackData, prefix="show_list"):
-    action: str = Action.show
+class ClbPage(CallbackData, prefix=Actions.page):
     postfix: str
+    pk: int | None = None
 
 
-class ClbShowDetail(CallbackData, prefix="show_detail"):
-    action: str = Action.show
+class ClbAdd(CallbackData, prefix=Actions.add):
     postfix: str
-    pk: int
+    pk: int | None = None
 
 
-class ClbAdd(CallbackData, prefix="add"):
-    action: str = Action.add
+class ClbDelete(CallbackData, prefix=Actions.delete):
     postfix: str
-    pk: int
+    pk: int | None = None
 
 
-class ClbDelete(CallbackData, prefix="delete"):
-    action: str = Action.delete
+class ClbConfirm(CallbackData, prefix=Actions.confirm):
     postfix: str
-    pk: int
-
-
-class ClbConfirm(CallbackData, prefix="confirm"):
-    action: str = Action.confirm
-    postfix: str
-    pk: int
+    pk: int | None = None

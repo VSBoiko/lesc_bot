@@ -28,7 +28,7 @@ class RedisHandler:
     def get(self, key: str) -> Any:
         return self.db_redis.get(key)
 
-    def get_key_confirm(self, name: str, pk: int):
+    def get_key_confirm(self, name: str, pk: int | None = None):
         return self.generate_key([
             CONFIRM,
             name,

@@ -1,6 +1,8 @@
-from Subscribe import Subscribe
+from .Subscribe import Subscribe
 from api.base.ApiBase import ApiBase, T_HOST
 from api.settings import datetime_format_str_api
+from ..bookings.Booking import Booking
+from ..members.Member import Member
 
 
 class ApiSubscribes(ApiBase):
@@ -14,6 +16,20 @@ class ApiSubscribes(ApiBase):
     async def get_subscribe_by_pk(self, pk: int) -> Subscribe | None:
         subscribe = await self._api_get_subscribes(id=pk)
         return Subscribe(**subscribe[0]) if subscribe else None
+
+    async def get_subscribe_by_member(self, pk: int) -> Subscribe | None:
+        subscribe = await self._api_get_subscribes(id=pk)
+        return Subscribe(**subscribe[0]) if subscribe else None
+
+    async def get_bookings(self, subscribe: Subscribe) -> list[Booking] | None:
+        bookings: list[dict] = await self._api_get_bookings(
+            subscribe_id=subscribe.get_pk(),
+        )
+        return [Booking(**booking) for booking in bookings]
+
+    async def get_subscribe_member(self, subscribe: Subscribe):
+        member = await self._api_get_members(id=subscribe.get_member_pk())
+        return Member(**member[0]) if member else None
 
     async def add_subscribe(self, new_subscribe: Subscribe, member_id: int) -> Subscribe:
         result: dict = await self._api_add_subscribe(
